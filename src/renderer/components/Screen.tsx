@@ -23,6 +23,9 @@ interface Overlay {
 function overlayFor(account: AccountView): Overlay | null {
   if (!isScreenHidden(account)) return null;
   const accountId = account.id;
+  if (account.detached) {
+    return { label: 'Destacada em janela', action: 'Trazer de volta', command: { type: 'reattach', accountId } };
+  }
   switch (account.status) {
     case 'off':
       return { label: 'Conta desligada', action: 'Ligar', command: { type: 'enable', accountId } };

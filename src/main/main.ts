@@ -45,6 +45,8 @@ function start(): void {
   registerIpc(manager, window);
   if (testing) (globalThis as unknown as Record<string, unknown>).idleManagerTest = { manager, openedUrls };
   app.on('before-quit', () => manager.dispose());
+  // Detached account windows are not part of the interface: closing the main window ends the app.
+  window.on('closed', () => app.quit());
   void window.loadFile(join(__dirname, 'renderer', 'index.html'));
   manager.openEnabled();
 }

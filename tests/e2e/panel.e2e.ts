@@ -99,7 +99,8 @@ describe('account panel', () => {
     const focus = panel.getByRole('button', { name: 'Foco' });
     await focus.click();
     await app.waitFor(async () => (await app.view()).preferences.layout === 'focus', 3000);
-    expect(await focus.getAttribute('aria-pressed')).toBe('true');
+    // The interface hears of the change a moment after the main process made it.
+    await app.waitFor(async () => (await focus.getAttribute('aria-pressed')) === 'true', 3000);
 
     await panel.getByRole('button', { name: 'Desligar' }).click();
     await app.waitForStatus('a', 'off');

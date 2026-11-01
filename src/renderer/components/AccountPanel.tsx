@@ -73,6 +73,7 @@ export function AccountPanel({ view, renamingId, onRenameDone }: AccountPanelPro
   const send = window.idleManager.send;
   const id = account.id;
   const hasPage = !isScreenHidden({ status: account.status, detached: false });
+
   const sameGame = view.accounts.filter((other) => other.gameId === account.gameId);
   const next = sameGame[(sameGame.findIndex((other) => other.id === id) + 1) % sameGame.length];
   const memory = account.memoryMb.at(-1);
@@ -110,8 +111,13 @@ export function AccountPanel({ view, renamingId, onRenameDone }: AccountPanelPro
           {account.muted ? <MuteIcon /> : <SoundIcon />}
           {account.muted ? 'Mudo' : 'Som'}
         </button>
-        <button className="act" type="button" disabled title="Chega na próxima etapa">
-          <PopIcon />Destacar
+        <button
+          className="act"
+          type="button"
+          disabled={!hasPage && !account.detached}
+          onClick={() => send({ type: account.detached ? 'reattach' : 'detach', accountId: id })}
+        >
+          <PopIcon />{account.detached ? 'Trazer' : 'Destacar'}
         </button>
       </div>
 

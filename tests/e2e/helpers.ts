@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { expect } from 'vitest';
 import { _electron } from 'playwright-core';
 import type { ElectronApplication, Page } from 'playwright-core';
 import type { AccountManager } from '../../src/main/account-manager';
@@ -22,6 +23,22 @@ interface TestHook {
 
 const PROJECT_ROOT = join(import.meta.dirname, '..', '..');
 const FAKE_GAME = readFileSync(join(import.meta.dirname, 'fake-game.html'));
+
+// Every app this run started that has not been closed yet, so none can outlive the run.
+const running = new Map<number, string>();
+const CLOSE_TIMEOUT_MS = 10000;
+
+export function killLeftovers(): void {
+  for (const [pid, testName] of running) {
+    console.error(`e2e: the app of "${testName}" was still running at the end of the file; killing pid ${pid}`);
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // Already gone.
+    }
+  }
+  running.clear();
+}
 
 export const account = (id: string, partial: Partial<StoredAccount> = {}): StoredAccount => ({
   id: accountId(id),
@@ -46,8 +63,19 @@ export interface ScreenPlacement {
 
 type KeyModifier = 'control' | 'shift' | 'alt';
 
+export interface DetachedState {
+  windows: number;
+  inOwnWindow: boolean;
+  bounds: Rect | null;
+  content: Rect | null;
+  zoom: number | null;
+}
+
 export interface TestApp {
   app: ElectronApplication;
+  detachedState(id: string): Promise<DetachedState>;
+  closeDetached(id: string): Promise<void>;
+  mainProcessErrors(): string[];
   ui(): Promise<Page>;
   viewBounds(id: string): Promise<ScreenPlacement | null>;
   pressInWindow(key: string, modifiers?: KeyModifier[]): Promise<void>;
@@ -117,6 +145,17 @@ export async function launchApp(options: { data?: AppData } = {}): Promise<TestA
   const view = (): Promise<AppView> =>
     app.evaluate(() => (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.manager.view());
 
+  const pid = app.process().pid;
+  const testName = expect.getState().currentTestName ?? 'unknown test';
+  if (pid !== undefined) running.set(pid, testName);
+
+  const errors: string[] = [];
+  app.process().stderr?.on('data', (chunk: Buffer) => {
+    for (const line of String(chunk).split('\n')) {
+      if (/Uncaught|UnhandledPromiseRejection|TypeError|ReferenceError|Object has been destroyed/.test(line)) errors.push(line);
+    }
+  });
+
   const exit = new Promise<void>((resolve) => {
     app.process().once('exit', () => resolve());
   });
@@ -124,6 +163,33 @@ export async function launchApp(options: { data?: AppData } = {}): Promise<TestA
   const testApp: TestApp = {
     app,
     view,
+    mainProcessErrors: () => errors,
+    detachedState: (id) =>
+      app.evaluate(({ BaseWindow, BrowserWindow }, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        const contents = test.manager.webContentsOf(target as AccountId);
+        const windows = BaseWindow.getAllWindows();
+        const own = windows.find(
+          (win) => !(win instanceof BrowserWindow) && win.contentView.children.some((child) => (child as { webContents?: unknown }).webContents === contents),
+        );
+        const view = own?.contentView.children.find((child) => (child as { webContents?: unknown }).webContents === contents);
+        return {
+          windows: windows.length,
+          inOwnWindow: own !== undefined,
+          bounds: view?.getBounds() ?? null,
+          content: own?.getContentBounds() ?? null,
+          zoom: contents?.getZoomFactor() ?? null,
+        };
+      }, id),
+    closeDetached: (id) =>
+      app.evaluate(({ BaseWindow, BrowserWindow }, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        const contents = test.manager.webContentsOf(target as AccountId);
+        const own = BaseWindow.getAllWindows().find(
+          (win) => !(win instanceof BrowserWindow) && win.contentView.children.some((child) => (child as { webContents?: unknown }).webContents === contents),
+        );
+        own?.close();
+      }, id),
     async ui() {
       const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
@@ -277,7 +343,19 @@ export async function launchApp(options: { data?: AppData } = {}): Promise<TestA
     },
     storedData: () => JSON.parse(readFileSync(join(dataDir, 'data.json'), 'utf8')) as AppData,
     async close() {
-      await app.close().catch(() => undefined);
+      const closed = await Promise.race([
+        app.close().then(() => true, () => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), CLOSE_TIMEOUT_MS)),
+      ]);
+      if (!closed && pid !== undefined) {
+        console.error(`e2e: the app of "${testName}" did not close in ${CLOSE_TIMEOUT_MS / 1000} s; killing pid ${pid}`);
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          // Already gone.
+        }
+      }
+      if (pid !== undefined) running.delete(pid);
       server.closeAllConnections();
       server.close();
       rmSync(dataDir, { recursive: true, force: true });

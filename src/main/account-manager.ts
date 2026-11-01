@@ -1,7 +1,7 @@
 import { totalmem } from 'node:os';
 import { join } from 'node:path';
 import { app, ipcMain, session, WebContentsView } from 'electron';
-import type { BrowserWindow, IpcMainEvent, WebContents } from 'electron';
+import type { BaseWindow, BrowserWindow, IpcMainEvent, WebContents } from 'electron';
 import { addAccount, registerNick, removeAccount, renameAccount, suggestName } from '../core/accounts';
 import { accountShortcut, canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../core/policies';
 import type { KeyPress } from '../core/policies';
@@ -29,6 +29,7 @@ import type {
   StoredAccount,
   UsageSample,
 } from '../shared/types';
+import { detachAccount } from './detach';
 import { readProcessUsage } from './metrics';
 import type { Repository } from './repository';
 
@@ -52,6 +53,7 @@ interface Slot {
   memoryMb: number[];
   cpu: number[];
   history: HistoryEvent[];
+  detached: BaseWindow | null;
 }
 
 const TICK_MS = 1000;
@@ -158,8 +160,11 @@ export class AccountManager {
         this.applyScreens();
         return;
       case 'detach':
+        this.detach(command.accountId);
+        return;
       case 'reattach':
-        throw new Error(`Command ${command.type} arrives in Task 11`);
+        this.slots.get(command.accountId)?.detached?.close();
+        return;
       case 'set-notifications':
         this.updatePreferences({ notifications: command.enabled });
         return;
@@ -252,6 +257,7 @@ export class AccountManager {
       memoryMb: [],
       cpu: [],
       history: [],
+      detached: null,
     };
     this.slots.set(account.id, slot);
     return slot;
@@ -278,7 +284,16 @@ export class AccountManager {
     if (view !== null) {
       slot.view = null;
       this.slotBySender.delete(view.webContents.id);
-      if (!this.deps.window.isDestroyed()) this.deps.window.contentView.removeChildView(view);
+      const detached = slot.detached;
+      slot.detached = null;
+      if (detached !== null) {
+        // The account is going away: its window must not hand the view back to the main window.
+        detached.removeAllListeners('close');
+        detached.contentView.removeChildView(view);
+        detached.close();
+      } else if (!this.deps.window.isDestroyed()) {
+        this.deps.window.contentView.removeChildView(view);
+      }
       if (!view.webContents.isDestroyed()) view.webContents.close();
     }
   }
@@ -434,6 +449,8 @@ export class AccountManager {
       state.attempts !== previous.attempts ||
       state.enabledSince !== previous.enabledSince;
     if (!visible) return;
+    // A hidden status (down, blocked) has an action on the main window's screen: bring the account back to it.
+    if (slot.detached !== null && isScreenHidden({ status: state.status, detached: false })) slot.detached.close();
     this.applyScreens();
     this.publish();
   }
@@ -494,6 +511,26 @@ export class AccountManager {
       this.record(slot, 'Ligada');
       this.start(slot);
     }
+  }
+
+  private detach(id: AccountId): void {
+    const slot = this.slots.get(id);
+    const view = slot?.view;
+    if (slot === undefined || view == null || slot.detached !== null) return;
+    if (isScreenHidden({ status: slot.supervisor.status, detached: false })) return;
+    const name = this.stored(id)?.name ?? id;
+    this.deps.window.contentView.removeChildView(view);
+    slot.detached = detachAccount(view, `${name} · ${slot.game.name}`, () => this.takeBack(slot));
+    this.record(slot, 'Destacada em janela');
+    this.applyScreens();
+  }
+
+  // Runs from the detached window's own close event, while that window is still alive.
+  private takeBack(slot: Slot): void {
+    slot.detached = null;
+    if (slot.view !== null && !this.deps.window.isDestroyed()) this.deps.window.contentView.addChildView(slot.view);
+    this.record(slot, 'Trazida de volta');
+    this.applyScreens();
   }
 
   private select(id: AccountId): void {
@@ -570,7 +607,7 @@ export class AccountManager {
   private applyScreens(): void {
     for (const slot of this.slots.values()) {
       const view = slot.view;
-      if (view === null) continue;
+      if (view === null || slot.detached !== null) continue;
       const screen = this.screens.get(slot.accountId);
       const hidden = isScreenHidden({ status: slot.supervisor.status, detached: false });
       view.setVisible(screen !== undefined && !hidden);
@@ -597,7 +634,7 @@ export class AccountManager {
         attempts: slot.supervisor.attempts,
         enabledSince: slot.supervisor.enabledSince,
         muted: account.muted,
-        detached: false,
+        detached: slot.detached !== null,
         host: slot.host,
         partition: partitionFor(account.gameId, account.id),
         memoryMb: slot.memoryMb,
