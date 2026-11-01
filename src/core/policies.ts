@@ -1,0 +1,38 @@
+import { MIN_ZOOM, UNSCALED_HEIGHT, USER_GESTURE_WINDOW_MS } from '../shared/constants';
+import type { AccountStatus, AccountView, Layout } from '../shared/types';
+
+export type NavigationDecision = 'inside' | 'external' | 'block';
+
+// Only the game's own hosts stay inside an account. Everything else on the web goes to the default
+// browser, and anything that is not http(s) never loads. `allowHttp` exists for the local fake game
+// used by the end-to-end tests.
+export function decideNavigation(url: string, hosts: readonly string[], allowHttp = false): NavigationDecision {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'block';
+  }
+  const secure = parsed.protocol === 'https:';
+  if (!secure && parsed.protocol !== 'http:') return 'block';
+  return hosts.includes(parsed.hostname) && (secure || allowHttp) ? 'inside' : 'external';
+}
+
+export function canOpenExternal(lastInputAt: number | null, now: number): boolean {
+  if (lastInputAt === null) return false;
+  const elapsed = now - lastInputAt;
+  return elapsed >= 0 && elapsed <= USER_GESTURE_WINDOW_MS;
+}
+
+// In the grid the game is scaled down so a whole 828px-tall game fits the smaller tile. The game's own
+// automatic scaling stays idle at that size. Other layouts use the game at full size.
+export function zoomForScreen(layout: Layout, areaHeight: number): number {
+  if (layout !== 'grid' || !Number.isFinite(areaHeight)) return 1;
+  return Math.min(1, Math.max(MIN_ZOOM, areaHeight / UNSCALED_HEIGHT));
+}
+
+const HIDDEN_STATUSES: readonly AccountStatus[] = ['off', 'down', 'blocked'];
+
+export function isScreenHidden(account: Pick<AccountView, 'status' | 'detached'>): boolean {
+  return account.detached || HIDDEN_STATUSES.includes(account.status);
+}
