@@ -97,7 +97,7 @@ describe('detach', () => {
     const { app, panel } = await start(account('a'), account('b'));
     await app.waitForStatus('a', 'login');
     await detachAndWait(app, panel, 'a');
-    await app.closeWindow();
+    await app.quitApp();
     expect(await app.exited(8000)).toBe(true);
     expect(app.mainProcessErrors()).toEqual([]);
   });

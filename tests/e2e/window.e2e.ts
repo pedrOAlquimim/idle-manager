@@ -282,10 +282,11 @@ describe('status', () => {
 });
 
 describe('window', () => {
-  test('closing the window ends the app without an error', async () => {
+  test('quitting ends the app without an error', async () => {
     const { app } = await start(account('a'));
     await app.waitForStatus('a', 'login');
-    await app.closeWindow();
+    await app.quitApp();
     expect(await app.exited(5000)).toBe(true);
+    expect(app.mainProcessErrors()).toEqual([]);
   });
 });

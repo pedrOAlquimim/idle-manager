@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { accountMenuTemplate, groupMenuTemplate, removalDialogOptions } from '../src/main/menu-templates';
+import { accountMenuTemplate, groupMenuTemplate, removalDialogOptions, trayMenuTemplate } from '../src/main/menu-templates';
 
 const click = (item: { click?: unknown } | undefined): void => {
   (item?.click as (...args: unknown[]) => void)(undefined, undefined, undefined);
@@ -25,6 +25,18 @@ describe('group menu', () => {
     click(template[1]);
     click(template[0]);
     expect(calls).toEqual(['disable', 'enable']);
+  });
+});
+
+describe('tray menu', () => {
+  test('offers Mostrar IdleManager and Sair, each calling its own handler', () => {
+    const calls: string[] = [];
+    const template = trayMenuTemplate({ show: () => calls.push('show'), quit: () => calls.push('quit') });
+    const items = template.filter((item) => item.type !== 'separator');
+    expect(items.map((item) => item.label)).toEqual(['Mostrar IdleManager', 'Sair']);
+    click(items[1]);
+    click(items[0]);
+    expect(calls).toEqual(['quit', 'show']);
   });
 });
 

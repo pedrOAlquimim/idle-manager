@@ -15,6 +15,14 @@ export function groupMenuTemplate(handlers: { enableAll(): void; disableAll(): v
   ];
 }
 
+export function trayMenuTemplate(handlers: { show(): void; quit(): void }): MenuItemConstructorOptions[] {
+  return [
+    { label: 'Mostrar IdleManager', click: () => handlers.show() },
+    { type: 'separator' },
+    { label: 'Sair', click: () => handlers.quit() },
+  ];
+}
+
 // Cancelar is the default and the answer to Esc: a stray key press must never delete an account.
 export function removalDialogOptions(name: string): MessageBoxOptions {
   return {

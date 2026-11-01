@@ -18,6 +18,9 @@ import type { AccountId, AccountStatus, AccountView, AppData, AppView, Rect, Sto
 interface TestHook {
   manager: AccountManager;
   openedUrls: string[];
+  notifications: { title: string; body: string }[];
+  power: { active: boolean };
+  quit(): void;
 }
 
 
@@ -73,6 +76,14 @@ export interface DetachedState {
 
 export interface TestApp {
   app: ElectronApplication;
+  dataDir: string;
+  hideWindow(): Promise<void>;
+  windowVisible(): Promise<boolean>;
+  windowCount(): Promise<number>;
+  quitApp(): Promise<void>;
+  notifications(): Promise<{ title: string; body: string }[]>;
+  powerActive(): Promise<boolean>;
+  emitResume(): Promise<number>;
   detachedState(id: string): Promise<DetachedState>;
   closeDetached(id: string): Promise<void>;
   mainProcessErrors(): string[];
@@ -164,6 +175,34 @@ export async function launchApp(options: { data?: AppData } = {}): Promise<TestA
     app,
     view,
     mainProcessErrors: () => errors,
+    dataDir,
+    hideWindow: () =>
+      app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.hide();
+      }),
+    windowVisible: () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isVisible() ?? false),
+    windowCount: () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
+    quitApp: () =>
+      app.evaluate(() => {
+        (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.quit();
+      }),
+    notifications: () =>
+      app.evaluate(() => [...(globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.notifications]),
+    powerActive: () =>
+      app.evaluate(() => (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.power.active),
+    emitResume: () =>
+      app.evaluate(({ powerMonitor }) => {
+        const manager = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.manager;
+        const original = manager.onResume.bind(manager);
+        let calls = 0;
+        manager.onResume = () => {
+          calls += 1;
+          original();
+        };
+        powerMonitor.emit('resume');
+        manager.onResume = original;
+        return calls;
+      }),
     detachedState: (id) =>
       app.evaluate(({ BaseWindow, BrowserWindow }, target) => {
         const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
