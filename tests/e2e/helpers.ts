@@ -1,0 +1,185 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { Server } from 'node:http';
+import { createRequire } from 'node:module';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { _electron } from 'playwright-core';
+import type { ElectronApplication } from 'playwright-core';
+import type { AccountManager } from '../../src/main/account-manager';
+import { INITIAL_DATA } from '../../src/shared/schemas';
+import { accountId, gameId } from '../../src/shared/types';
+import type { Command } from '../../src/shared/ipc';
+import type { AccountId, AccountStatus, AccountView, AppData, AppView, StoredAccount } from '../../src/shared/types';
+
+interface TestHook {
+  manager: AccountManager;
+  openedUrls: string[];
+}
+
+
+const PROJECT_ROOT = join(import.meta.dirname, '..', '..');
+const FAKE_GAME = readFileSync(join(import.meta.dirname, 'fake-game.html'));
+
+export const account = (id: string, partial: Partial<StoredAccount> = {}): StoredAccount => ({
+  id: accountId(id),
+  gameId: gameId('pokeidle'),
+  name: id,
+  enabled: true,
+  muted: true,
+  nick: null,
+  ...partial,
+});
+
+export const dataWith = (...accounts: StoredAccount[]): AppData => ({
+  ...INITIAL_DATA,
+  accounts,
+  preferences: { ...INITIAL_DATA.preferences, selectedId: accounts[0]?.id ?? null },
+});
+
+export interface TestApp {
+  app: ElectronApplication;
+  view(): Promise<AppView>;
+  accountView(id: string): Promise<AccountView>;
+  execute(command: Command): Promise<void>;
+  removeAccount(id: string): Promise<void>;
+  openedUrls(): Promise<string[]>;
+  hasPage(id: string): Promise<boolean>;
+  inPage<T>(id: string, script: string): Promise<T>;
+  crash(id: string): Promise<void>;
+  focus(id: string): Promise<void>;
+  clickAt(id: string, x: number, y: number): Promise<void>;
+  waitForStatus(id: string, status: AccountStatus, timeoutMs?: number): Promise<void>;
+  waitFor(check: () => Promise<boolean>, timeoutMs?: number): Promise<void>;
+  storedData(): AppData;
+  close(): Promise<void>;
+}
+
+async function serveFakeGame(): Promise<Server> {
+  const server = createServer((request, response) => {
+    if (request.url === '/redirect') {
+      response.writeHead(302, { location: 'https://example.com/' });
+      response.end();
+      return;
+    }
+    if (request.url === '/file.bin') {
+      response.setHeader('content-type', 'application/octet-stream');
+      response.setHeader('content-disposition', 'attachment; filename="file.bin"');
+      response.end('not a real program');
+      return;
+    }
+    response.setHeader('content-type', 'text/html');
+    response.end(FAKE_GAME);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return server;
+}
+
+export async function launchApp(options: { data?: AppData } = {}): Promise<TestApp> {
+  const server = await serveFakeGame();
+  const { port } = server.address() as AddressInfo;
+  const dataDir = mkdtempSync(join(tmpdir(), 'idlemanager-e2e-'));
+  if (options.data !== undefined) writeFileSync(join(dataDir, 'data.json'), JSON.stringify(options.data));
+
+  const electronBinary = createRequire(import.meta.url)('electron') as unknown as string;
+  const app = await _electron.launch({
+    executablePath: electronBinary,
+    args: [PROJECT_ROOT],
+    cwd: PROJECT_ROOT,
+    env: {
+      ...process.env,
+      IDLEMANAGER_DATA_DIR: dataDir,
+      IDLEMANAGER_GAME_URL: `http://127.0.0.1:${port}/`,
+      IDLEMANAGER_TEST: '1',
+    },
+  });
+
+  const view = (): Promise<AppView> =>
+    app.evaluate(() => (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.manager.view());
+
+  const testApp: TestApp = {
+    app,
+    view,
+    async accountView(id) {
+      const found = (await view()).accounts.find((candidate) => candidate.id === id);
+      if (found === undefined) throw new Error(`no account ${id}`);
+      return found;
+    },
+    execute: (command) =>
+      app.evaluate((_electron, payload) => {
+        (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.manager.execute(payload);
+      }, command),
+    removeAccount: (id) =>
+      app.evaluate(async (_electron, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        await test.manager.removeAccount(target as AccountId);
+      }, id),
+    openedUrls: () =>
+      app.evaluate(() => [...(globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.openedUrls]),
+    hasPage: (id) =>
+      app.evaluate(
+        (_electron, target) =>
+          (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.manager.webContentsOf(target as AccountId) !== null,
+        id,
+      ),
+    inPage: <T>(id: string, script: string): Promise<T> =>
+      app.evaluate(
+        (_electron, { target, code }) => {
+          const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+          const contents = test.manager.webContentsOf(target as AccountId);
+          if (contents === null) throw new Error(`no page for ${target}`);
+          return contents.executeJavaScript(code) as Promise<T>;
+        },
+        { target: id, code: script },
+      ),
+    crash: (id) =>
+      app.evaluate((_electron, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        test.manager.webContentsOf(target as AccountId)?.forcefullyCrashRenderer();
+      }, id),
+    focus: (id) =>
+      app.evaluate((_electron, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        test.manager.webContentsOf(target as AccountId)?.focus();
+      }, id),
+    clickAt: (id, x, y) =>
+      app.evaluate(
+        (_electron, { target, left, top }) => {
+          const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+          const contents = test.manager.webContentsOf(target as AccountId);
+          contents?.sendInputEvent({ type: 'mouseDown', x: left, y: top, button: 'left', clickCount: 1 });
+          contents?.sendInputEvent({ type: 'mouseUp', x: left, y: top, button: 'left', clickCount: 1 });
+        },
+        { target: id, left: x, top: y },
+      ),
+    async waitFor(check, timeoutMs = 30000) {
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        if (await check()) return;
+        if (Date.now() > deadline) throw new Error('condition not met in time');
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    },
+    async waitForStatus(id, status, timeoutMs = 30000) {
+      let last: AccountStatus | undefined;
+      try {
+        await testApp.waitFor(async () => {
+          last = (await testApp.accountView(id)).status;
+          return last === status;
+        }, timeoutMs);
+      } catch {
+        throw new Error(`account ${id} stayed "${last}", expected "${status}"`);
+      }
+    },
+    storedData: () => JSON.parse(readFileSync(join(dataDir, 'data.json'), 'utf8')) as AppData,
+    async close() {
+      await app.close();
+      server.closeAllConnections();
+      server.close();
+      rmSync(dataDir, { recursive: true, force: true });
+    },
+  };
+  return testApp;
+}
+

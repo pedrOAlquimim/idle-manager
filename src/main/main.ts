@@ -1,30 +1,34 @@
-import { app, BaseWindow, WebContentsView } from 'electron';
+import { join } from 'node:path';
+import { app, BrowserWindow, Notification, shell } from 'electron';
+import { GAMES } from '../games/catalog';
+import { AccountManager } from './account-manager';
+import { Repository } from './repository';
 
-// Temporary skeleton, replaced by the account manager in Task 7.
-const START_URL = 'https://pokeidle.io/app';
+const dataDirectory = process.env.IDLEMANAGER_DATA_DIR;
+if (dataDirectory) app.setPath('userData', dataDirectory);
 
-function openWindow(): void {
-  const window = new BaseWindow({ width: 1280, height: 800, title: 'IdleManager' });
-  const view = new WebContentsView({
-    webPreferences: {
-      partition: 'persist:pokeidle-test',
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      backgroundThrottling: false,
+const testing = process.env.IDLEMANAGER_TEST === '1';
+
+function start(): void {
+  const window = new BrowserWindow({ width: 1280, height: 800, title: 'IdleManager', backgroundColor: '#0a0c12' });
+  // The window's own page holds the interface from Task 9 on; until then it only has to exist.
+  void window.loadURL('about:blank');
+  const openedUrls: string[] = [];
+  const manager = new AccountManager({
+    window,
+    repository: new Repository(join(app.getPath('userData'), 'data.json')),
+    games: GAMES,
+    notify: (title, body) => new Notification({ title, body }).show(),
+    openExternal: (url) => {
+      if (testing) openedUrls.push(url);
+      else void shell.openExternal(url);
     },
+    onChange: () => undefined,
   });
-
-  const fit = (): void => {
-    const { width, height } = window.getContentBounds();
-    view.setBounds({ x: 0, y: 0, width, height });
-  };
-
-  window.contentView.addChildView(view);
-  window.on('resize', fit);
-  fit();
-  view.webContents.loadURL(START_URL).catch((error: unknown) => console.error(error));
+  if (testing) (globalThis as unknown as Record<string, unknown>).idleManagerTest = { manager, openedUrls };
+  app.on('before-quit', () => manager.dispose());
+  manager.openEnabled();
 }
 
-void app.whenReady().then(openWindow);
+void app.whenReady().then(start);
 app.on('window-all-closed', () => app.quit());

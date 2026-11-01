@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fake game</title>
+<style>.hidden { display: none; } #external-link { position: fixed; top: 0; left: 0; width: 300px; height: 150px; }</style>
+</head>
+<body>
+<a id="external-link" href="https://example.com/" target="_blank">external</a>
+<div id="portal">login form</div>
+<div id="app" class="hidden">game</div>
+<div id="sessao-tomada" class="hidden">session taken</div>
+<div id="alerta-conta" class="hidden"><h2 id="alerta-conta-titulo"></h2></div>
+<script>
+  const byId = (id) => document.getElementById(id);
+  function sync() {
+    const signedIn = localStorage.getItem('sessao') !== null;
+    byId('portal').classList.toggle('hidden', signedIn);
+    byId('app').classList.toggle('hidden', !signedIn);
+  }
+  window.signIn = (nick) => { localStorage.setItem('sessao', JSON.stringify({ nick, token: 'token' })); sync(); };
+  window.signOut = () => { localStorage.removeItem('sessao'); sync(); };
+  window.takeSession = () => byId('sessao-tomada').classList.remove('hidden');
+  window.startDownload = () => {
+    const link = document.createElement('a');
+    link.href = '/file.bin';
+    link.download = 'file.bin';
+    document.body.append(link);
+    link.click();
+  };
+  sync();
+</script>
+</body>
+</html>
