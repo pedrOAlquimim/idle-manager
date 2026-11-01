@@ -2,8 +2,9 @@ import { totalmem } from 'node:os';
 import { join } from 'node:path';
 import { app, ipcMain, session, WebContentsView } from 'electron';
 import type { BrowserWindow, IpcMainEvent, WebContents } from 'electron';
-import { addAccount, registerNick, removeAccount, renameAccount } from '../core/accounts';
-import { canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../core/policies';
+import { addAccount, registerNick, removeAccount, renameAccount, suggestName } from '../core/accounts';
+import { accountShortcut, canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../core/policies';
+import type { KeyPress } from '../core/policies';
 import { initialSupervisorState, transition } from '../core/supervisor';
 import { appendEvent, appendSample, totalUsage, usageForProcess } from '../core/usage';
 import type { SupervisorAction, SupervisorEvent, SupervisorState } from '../core/supervisor';
@@ -56,6 +57,7 @@ const TICK_MS = 1000;
 const BYTES_PER_MB = 1024 * 1024;
 const ATTENTION_STATUSES: readonly AccountStatus[] = ['login', 'notice', 'down', 'blocked'];
 const ALLOWED_PERMISSIONS: readonly string[] = ['clipboard-sanitized-write', 'fullscreen'];
+const VIEW_BACKGROUND = '#0d111b';
 
 // Failures of a load are reported by did-fail-load, so the promise of loadURL carries no extra news.
 const load = (contents: WebContents, url: string): void => {
@@ -144,6 +146,9 @@ export class AccountManager {
       case 'toggle-focus':
         this.toggleFocus(command.accountId);
         return;
+      case 'leave-focus':
+        this.leaveFocus();
+        return;
       case 'toggle-sidebar':
         this.updatePreferences({ sidebarOpen: !this.data.preferences.sidebarOpen });
         return;
@@ -201,6 +206,20 @@ export class AccountManager {
     return [...this.slots.values()].some((slot) => slot.supervisor.status === 'connected');
   }
 
+  leaveFocus(): void {
+    if (this.data.preferences.layout === 'focus') this.setLayout('grid');
+  }
+
+  // Returns whether the key was used, so the caller keeps it from reaching the page.
+  handleShortcut(input: KeyPress): boolean {
+    const position = accountShortcut(input);
+    if (position === null) return false;
+    const target = this.activeAccounts()[position - 1];
+    if (target === undefined) return false;
+    this.select(target.id);
+    return true;
+  }
+
   webContentsOf(id: AccountId): WebContents | null {
     return this.slots.get(id)?.view?.webContents ?? null;
   }
@@ -252,7 +271,7 @@ export class AccountManager {
     if (view !== null) {
       slot.view = null;
       this.slotBySender.delete(view.webContents.id);
-      this.deps.window.contentView.removeChildView(view);
+      if (!this.deps.window.isDestroyed()) this.deps.window.contentView.removeChildView(view);
       if (!view.webContents.isDestroyed()) view.webContents.close();
     }
   }
@@ -273,6 +292,7 @@ export class AccountManager {
         backgroundThrottling: false,
       },
     });
+    view.setBackgroundColor(VIEW_BACKGROUND);
     slot.view = view;
     this.slotBySender.set(view.webContents.id, slot);
     view.webContents.setAudioMuted(account.muted);
@@ -316,8 +336,9 @@ export class AccountManager {
     contents.on('did-navigate', (_event, url) => {
       slot.host = URL.canParse(url) ? new URL(url).hostname : slot.host;
     });
-    contents.on('before-input-event', (_event, input) => {
+    contents.on('before-input-event', (event, input) => {
       if (input.type === 'keyDown') noteInput();
+      if (this.handleShortcut(input)) event.preventDefault();
     });
     // Selection follows the click, not the focus event: a view also gets focus when it opens.
     contents.on('before-mouse-event', (_event, mouse) => {
@@ -528,6 +549,13 @@ export class AccountManager {
     this.deps.onChange(this.view());
   }
 
+  // The accounts on screen: those of the selected account's game.
+  private activeAccounts(): StoredAccount[] {
+    const selectedId = this.data.preferences.selectedId;
+    const game = (selectedId === null ? undefined : this.stored(selectedId))?.gameId ?? this.deps.games[0]?.id;
+    return this.data.accounts.filter((account) => account.gameId === game && this.slots.has(account.id));
+  }
+
   private stored(id: AccountId): StoredAccount | undefined {
     return this.data.accounts.find((account) => account.id === id);
   }
@@ -579,6 +607,7 @@ export class AccountManager {
       gameId: game.id,
       name: game.name,
       limit: game.accountLimit,
+      suggestedName: suggestName(this.data, game),
       accountIds: members.map((account) => account.id),
       enabledCount: members.filter((account) => account.status !== 'off').length,
       memoryMb: members.reduce((sum, account) => sum + (account.memoryMb.at(-1) ?? 0), 0),

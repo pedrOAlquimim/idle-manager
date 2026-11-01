@@ -1,0 +1,15 @@
+import '@fontsource/inter/latin-400.css';
+import '@fontsource/inter/latin-500.css';
+import '@fontsource/inter/latin-600.css';
+import '@fontsource/inter/latin-700.css';
+import '@fontsource/jetbrains-mono/latin-500.css';
+import '@fontsource/jetbrains-mono/latin-700.css';
+import '@fontsource/silkscreen/latin-400.css';
+import './styles/tokens.css';
+import './styles/app.css';
+import { createRoot } from 'react-dom/client';
+import { App } from './App';
+
+const container = document.getElementById('root');
+if (container === null) throw new Error('The page has no #root element');
+createRoot(container).render(<App />);

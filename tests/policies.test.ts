@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../src/core/policies';
+import { accountShortcut, canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../src/core/policies';
 import type { AccountStatus } from '../src/shared/types';
 
 describe('decideNavigation', () => {
@@ -53,6 +53,40 @@ describe('canOpenExternal', () => {
   test('input at the same instant counts, input from the future does not', () => {
     expect(canOpenExternal(10000, 10000)).toBe(true);
     expect(canOpenExternal(10001, 10000)).toBe(false);
+  });
+});
+
+describe('accountShortcut', () => {
+  const press = (key: string, modifiers: Partial<Record<'control' | 'shift' | 'alt' | 'meta', boolean>> = {}) => ({
+    type: 'keyDown',
+    key,
+    control: true,
+    shift: false,
+    alt: false,
+    meta: false,
+    ...modifiers,
+  });
+
+  test.each([
+    ['1', 1],
+    ['2', 2],
+    ['9', 9],
+  ])('Ctrl+%s is position %i', (key, position) => {
+    expect(accountShortcut(press(key))).toBe(position);
+  });
+
+  test('only Ctrl with a digit from 1 to 9 counts', () => {
+    expect(accountShortcut(press('0'))).toBeNull();
+    expect(accountShortcut(press('a'))).toBeNull();
+    expect(accountShortcut(press('10'))).toBeNull();
+    expect(accountShortcut(press('2', { control: false }))).toBeNull();
+  });
+
+  test('other modifiers and key releases leave the key alone', () => {
+    expect(accountShortcut(press('2', { shift: true }))).toBeNull();
+    expect(accountShortcut(press('2', { alt: true }))).toBeNull();
+    expect(accountShortcut(press('2', { meta: true }))).toBeNull();
+    expect(accountShortcut({ ...press('2'), type: 'keyUp' })).toBeNull();
   });
 });
 

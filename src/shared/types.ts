@@ -78,6 +78,7 @@ export interface GroupView {
   gameId: GameId;
   name: string;
   limit: number;
+  suggestedName: string;
   accountIds: AccountId[];
   enabledCount: number;
   memoryMb: number;

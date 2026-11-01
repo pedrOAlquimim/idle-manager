@@ -1,0 +1,27 @@
+:root {
+  --bg: #0a0c12;
+  --panel: #0f1118;
+  --card: #12141d;
+  --tile: #10121a;
+  --hud: #07080c;
+  --btn: #151824;
+  --hover: #1e2230;
+  --selected: #1f2233;
+  --line: #1c2030;
+  --line-card: #232737;
+  --fg: #e6e8f0;
+  --fg-2: #b4b9cb;
+  --muted: #8b90a3;
+  --accent: #8b7cf6;
+  --accent-group: #6d5fd8;
+  --xp: #f5c84c;
+  --on: #34d399;
+  --off: #5b6072;
+  --mem: #38bdf8;
+  --cpu: #2dd4bf;
+  --err: #f87171;
+  --ui: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  --pixel: Silkscreen, 'Courier New', monospace;
+  color-scheme: dark;
+}

@@ -11,6 +11,7 @@
 <div id="app" class="hidden">game</div>
 <div id="sessao-tomada" class="hidden">session taken</div>
 <div id="alerta-conta" class="hidden"><h2 id="alerta-conta-titulo"></h2></div>
+<div id="modal" class="hidden">modal</div>
 <script>
   const byId = (id) => document.getElementById(id);
   function sync() {
@@ -21,6 +22,13 @@
   window.signIn = (nick) => { localStorage.setItem('sessao', JSON.stringify({ nick, token: 'token' })); sync(); };
   window.signOut = () => { localStorage.removeItem('sessao'); sync(); };
   window.takeSession = () => byId('sessao-tomada').classList.remove('hidden');
+  window.openModal = () => byId('modal').classList.remove('hidden');
+  window.keys = [];
+  // Like the real game: Escape closes the modal and nothing calls preventDefault.
+  document.addEventListener('keydown', (event) => {
+    window.keys.push(event.key);
+    if (event.key === 'Escape') byId('modal').classList.add('hidden');
+  });
   window.startDownload = () => {
     const link = document.createElement('a');
     link.href = '/file.bin';

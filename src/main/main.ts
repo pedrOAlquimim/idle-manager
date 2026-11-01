@@ -1,7 +1,9 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, Notification, shell } from 'electron';
 import { GAMES } from '../games/catalog';
+import { CHANNELS } from '../shared/ipc';
 import { AccountManager } from './account-manager';
+import { registerIpc } from './ipc';
 import { Repository } from './repository';
 
 const dataDirectory = process.env.IDLEMANAGER_DATA_DIR;
@@ -10,9 +12,22 @@ if (dataDirectory) app.setPath('userData', dataDirectory);
 const testing = process.env.IDLEMANAGER_TEST === '1';
 
 function start(): void {
-  const window = new BrowserWindow({ width: 1280, height: 800, title: 'IdleManager', backgroundColor: '#0a0c12' });
-  // The window's own page holds the interface from Task 9 on; until then it only has to exist.
-  void window.loadURL('about:blank');
+  const window = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    minWidth: 1000,
+    minHeight: 640,
+    title: 'IdleManager',
+    backgroundColor: '#0a0c12',
+    webPreferences: {
+      preload: join(__dirname, 'ui-preload.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  // The interface is a local page: nothing dropped on it or linked from it may replace it.
+  window.webContents.on('will-navigate', (event) => event.preventDefault());
   const openedUrls: string[] = [];
   const manager = new AccountManager({
     window,
@@ -23,10 +38,14 @@ function start(): void {
       if (testing) openedUrls.push(url);
       else void shell.openExternal(url);
     },
-    onChange: () => undefined,
+    onChange: (view) => {
+      if (!window.isDestroyed()) window.webContents.send(CHANNELS.view, view);
+    },
   });
+  registerIpc(manager, window);
   if (testing) (globalThis as unknown as Record<string, unknown>).idleManagerTest = { manager, openedUrls };
   app.on('before-quit', () => manager.dispose());
+  void window.loadFile(join(__dirname, 'renderer', 'index.html'));
   manager.openEnabled();
 }
 

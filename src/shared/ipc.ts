@@ -19,7 +19,7 @@ export type Command =
   | { type: 'open-group-menu'; gameId: GameId }
   | { type: 'set-layout'; layout: Layout }
   | { type: 'toggle-focus'; accountId: AccountId }
-  | { type: 'toggle-sidebar' | 'open-data-folder' }
+  | { type: 'toggle-sidebar' | 'open-data-folder' | 'leave-focus' }
   | { type: 'set-notifications'; enabled: boolean }
   | { type: 'screens'; screens: MeasuredScreen[] };
 

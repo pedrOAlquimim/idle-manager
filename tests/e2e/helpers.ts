@@ -6,12 +6,12 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron } from 'playwright-core';
-import type { ElectronApplication } from 'playwright-core';
+import type { ElectronApplication, Page } from 'playwright-core';
 import type { AccountManager } from '../../src/main/account-manager';
 import { INITIAL_DATA } from '../../src/shared/schemas';
 import { accountId, gameId } from '../../src/shared/types';
 import type { Command } from '../../src/shared/ipc';
-import type { AccountId, AccountStatus, AccountView, AppData, AppView, StoredAccount } from '../../src/shared/types';
+import type { AccountId, AccountStatus, AccountView, AppData, AppView, Rect, StoredAccount } from '../../src/shared/types';
 
 interface TestHook {
   manager: AccountManager;
@@ -38,8 +38,22 @@ export const dataWith = (...accounts: StoredAccount[]): AppData => ({
   preferences: { ...INITIAL_DATA.preferences, selectedId: accounts[0]?.id ?? null },
 });
 
+export interface ScreenPlacement {
+  bounds: Rect;
+  visible: boolean;
+}
+
+type KeyModifier = 'control' | 'shift' | 'alt';
+
 export interface TestApp {
   app: ElectronApplication;
+  ui(): Promise<Page>;
+  viewBounds(id: string): Promise<ScreenPlacement | null>;
+  pressInWindow(key: string, modifiers?: KeyModifier[]): Promise<void>;
+  pressInView(id: string, key: string, modifiers?: KeyModifier[]): Promise<void>;
+  closeWindow(): Promise<void>;
+  resizeWindow(width: number, height: number): Promise<void>;
+  exited(timeoutMs: number): Promise<boolean>;
   view(): Promise<AppView>;
   accountView(id: string): Promise<AccountView>;
   execute(command: Command): Promise<void>;
@@ -98,9 +112,70 @@ export async function launchApp(options: { data?: AppData } = {}): Promise<TestA
   const view = (): Promise<AppView> =>
     app.evaluate(() => (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.manager.view());
 
+  const exit = new Promise<void>((resolve) => {
+    app.process().once('exit', () => resolve());
+  });
+
   const testApp: TestApp = {
     app,
     view,
+    async ui() {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const page = app.windows().find((candidate) => candidate.url().endsWith('/renderer/index.html'));
+        if (page !== undefined) {
+          await page.locator('.app').waitFor({ timeout: 5000 });
+          return page;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error('the interface page never appeared');
+    },
+    viewBounds: (id) =>
+      app.evaluate(({ BrowserWindow }, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        const contents = test.manager.webContentsOf(target as AccountId);
+        const children = BrowserWindow.getAllWindows()[0]?.contentView.children ?? [];
+        const view = children.find((child) => (child as { webContents?: unknown }).webContents === contents);
+        return view === undefined || contents === null ? null : { bounds: view.getBounds(), visible: view.getVisible() };
+      }, id),
+    pressInWindow: (key, modifiers = []) =>
+      app.evaluate(
+        ({ BrowserWindow }, { keyCode, held }) => {
+          const contents = BrowserWindow.getAllWindows()[0]?.webContents;
+          contents?.focus();
+          contents?.sendInputEvent({ type: 'keyDown', keyCode, modifiers: held });
+          contents?.sendInputEvent({ type: 'keyUp', keyCode, modifiers: held });
+        },
+        { keyCode: key, held: modifiers },
+      ),
+    pressInView: (id, key, modifiers = []) =>
+      app.evaluate(
+        (_electron, { target, keyCode, held }) => {
+          const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+          const contents = test.manager.webContentsOf(target as AccountId);
+          contents?.focus();
+          contents?.sendInputEvent({ type: 'keyDown', keyCode, modifiers: held });
+          contents?.sendInputEvent({ type: 'keyUp', keyCode, modifiers: held });
+        },
+        { target: id, keyCode: key, held: modifiers },
+      ),
+    closeWindow: () =>
+      app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.close();
+      }),
+    resizeWindow: (width, height) =>
+      app.evaluate(
+        ({ BrowserWindow }, size) => {
+          BrowserWindow.getAllWindows()[0]?.setSize(size.width, size.height);
+        },
+        { width, height },
+      ),
+    exited: (timeoutMs) =>
+      Promise.race([
+        exit.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+      ]),
     async accountView(id) {
       const found = (await view()).accounts.find((candidate) => candidate.id === id);
       if (found === undefined) throw new Error(`no account ${id}`);
@@ -168,13 +243,13 @@ export async function launchApp(options: { data?: AppData } = {}): Promise<TestA
           last = (await testApp.accountView(id)).status;
           return last === status;
         }, timeoutMs);
-      } catch {
-        throw new Error(`account ${id} stayed "${last}", expected "${status}"`);
+      } catch (error) {
+        throw new Error(`account ${id} stayed "${last}", expected "${status}": ${String(error)}`, { cause: error });
       }
     },
     storedData: () => JSON.parse(readFileSync(join(dataDir, 'data.json'), 'utf8')) as AppData,
     async close() {
-      await app.close();
+      await app.close().catch(() => undefined);
       server.closeAllConnections();
       server.close();
       rmSync(dataDir, { recursive: true, force: true });

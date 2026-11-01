@@ -24,6 +24,21 @@ export function canOpenExternal(lastInputAt: number | null, now: number): boolea
   return elapsed >= 0 && elapsed <= USER_GESTURE_WINDOW_MS;
 }
 
+export interface KeyPress {
+  type: string;
+  key: string;
+  control: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+}
+
+// Ctrl+1 to Ctrl+9 pick an account by position. Plain digits stay with the game, which has a chat.
+export function accountShortcut(input: KeyPress): number | null {
+  if (input.type !== 'keyDown' || !input.control || input.shift || input.alt || input.meta) return null;
+  return /^[1-9]$/.test(input.key) ? Number(input.key) : null;
+}
+
 // In the grid the game is scaled down so a whole 828px-tall game fits the smaller tile. The game's own
 // automatic scaling stays idle at that size. Other layouts use the game at full size.
 export function zoomForScreen(layout: Layout, areaHeight: number): number {
