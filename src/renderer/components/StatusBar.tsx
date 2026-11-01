@@ -6,6 +6,7 @@ import { FocusIcon, GearIcon, GridIcon, HistoryIcon, RowIcon } from './Icons';
 
 interface StatusBarProps {
   view: AppView;
+  activePanel: ActivePanel;
   onOpenPanel: (panel: ActivePanel) => void;
 }
 
@@ -20,7 +21,7 @@ function attentionText(count: number): string {
   return count === 1 ? '1 conta precisa de você' : `${count} contas precisam de você`;
 }
 
-export function StatusBar({ view, onOpenPanel }: StatusBarProps) {
+export function StatusBar({ view, activePanel, onOpenPanel }: StatusBarProps) {
   const percentOfRam = Math.round(view.ramFraction * 100);
   return (
     <footer className="status">
@@ -49,11 +50,11 @@ export function StatusBar({ view, onOpenPanel }: StatusBarProps) {
             <span style={{ width: `${percentOfRam}%` }} />
           </span>
         </span>
-        <button className="ib" type="button" aria-label="Histórico" onClick={() => onOpenPanel('history')}>
+        <button className="ib" type="button" aria-label="Histórico" aria-pressed={activePanel === 'history'} onClick={() => onOpenPanel('history')}>
           <HistoryIcon />
         </button>
         <span className="ver">v{view.version}</span>
-        <button className="ib" type="button" aria-label="Configurações" onClick={() => onOpenPanel('settings')}>
+        <button className="ib" type="button" aria-label="Configurações" aria-pressed={activePanel === 'settings'} onClick={() => onOpenPanel('settings')}>
           <GearIcon />
         </button>
       </div>

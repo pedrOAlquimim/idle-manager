@@ -6,26 +6,35 @@ export const CHANNELS = {
   requestView: 'ui:request-view',
   probeReading: 'probe:reading',
   probeEscape: 'probe:escape',
+  renameRequest: 'ui:rename-request',
 } as const;
 
 export interface MeasuredScreen { accountId: AccountId; rect: Rect }
 
-export type Command =
+// Commands the account manager carries out.
+export type ManagerCommand =
   | { type: 'select' | 'enable' | 'disable' | 'go-home' | 'reload' | 'toggle-sound'
-      | 'detach' | 'reattach' | 'retry' | 'back-to-login'
-      | 'open-account-menu'; accountId: AccountId }
+      | 'detach' | 'reattach' | 'retry' | 'back-to-login'; accountId: AccountId }
   | { type: 'add-account'; gameId: GameId; name: string }
   | { type: 'rename-account'; accountId: AccountId; name: string }
-  | { type: 'open-group-menu'; gameId: GameId }
   | { type: 'set-layout'; layout: Layout }
   | { type: 'toggle-focus'; accountId: AccountId }
-  | { type: 'toggle-sidebar' | 'open-data-folder' | 'leave-focus' }
+  | { type: 'toggle-sidebar' | 'leave-focus' }
   | { type: 'set-notifications'; enabled: boolean }
   | { type: 'screens'; screens: MeasuredScreen[] };
+
+// Commands that need a native menu or the operating system: the window layer handles them, never the manager.
+export type UiCommand =
+  | { type: 'open-account-menu'; accountId: AccountId }
+  | { type: 'open-group-menu'; gameId: GameId }
+  | { type: 'open-data-folder' };
+
+export type Command = ManagerCommand | UiCommand;
 
 export interface WindowApi {
   requestView(): Promise<AppView>;
   onChange(listener: (view: AppView) => void): () => void;
+  onRenameRequest(listener: (id: AccountId) => void): () => void;
   send(command: Command): void;
 }
 

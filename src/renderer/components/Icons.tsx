@@ -69,3 +69,24 @@ export const MoreIcon = () => (
     <circle cx="19" cy="12" r="1.7" />
   </svg>
 );
+
+export const HomeIcon = () => <Stroke size={15}><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" /></Stroke>;
+export const ReloadIcon = () => <Stroke size={15}><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" /></Stroke>;
+export const PopIcon = () => <Stroke size={15}><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></Stroke>;
+export const PowerIcon = () => <Stroke size={15}><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0" /></Stroke>;
+export const NextIcon = () => <Stroke size={16}><path d="M9 6l6 6-6 6" /></Stroke>;
+export const BackIcon = () => <Stroke size={16}><path d="M15 6l-6 6 6 6" /></Stroke>;
+
+export const SoundIcon = () => (
+  <Stroke size={15}>
+    <path d="M4 9v6h4l5 4V5L8 9z" />
+    <path d="M17 9a4 4 0 0 1 0 6" />
+  </Stroke>
+);
+
+export const MuteIcon = () => (
+  <Stroke size={15}>
+    <path d="M4 9v6h4l5 4V5L8 9z" />
+    <path d="M17 9l5 6M22 9l-5 6" />
+  </Stroke>
+);

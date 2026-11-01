@@ -10,7 +10,8 @@ import type { ElectronApplication, Page } from 'playwright-core';
 import type { AccountManager } from '../../src/main/account-manager';
 import { INITIAL_DATA } from '../../src/shared/schemas';
 import { accountId, gameId } from '../../src/shared/types';
-import type { Command } from '../../src/shared/ipc';
+import { CHANNELS } from '../../src/shared/ipc';
+import type { ManagerCommand } from '../../src/shared/ipc';
 import type { AccountId, AccountStatus, AccountView, AppData, AppView, Rect, StoredAccount } from '../../src/shared/types';
 
 interface TestHook {
@@ -56,7 +57,11 @@ export interface TestApp {
   exited(timeoutMs: number): Promise<boolean>;
   view(): Promise<AppView>;
   accountView(id: string): Promise<AccountView>;
-  execute(command: Command): Promise<void>;
+  execute(command: ManagerCommand): Promise<void>;
+  isMuted(id: string): Promise<boolean | null>;
+  enableAll(game: string): Promise<void>;
+  disableAll(game: string): Promise<void>;
+  requestRename(id: string): Promise<void>;
   removeAccount(id: string): Promise<void>;
   openedUrls(): Promise<string[]>;
   hasPage(id: string): Promise<boolean>;
@@ -185,6 +190,29 @@ export async function launchApp(options: { data?: AppData } = {}): Promise<TestA
       app.evaluate((_electron, payload) => {
         (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.manager.execute(payload);
       }, command),
+    isMuted: (id) =>
+      app.evaluate(
+        (_electron, target) =>
+          (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.manager
+            .webContentsOf(target as AccountId)
+            ?.isAudioMuted() ?? null,
+        id,
+      ),
+    enableAll: (game) =>
+      app.evaluate((_electron, target) => {
+        (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.manager.enableAll(target as never);
+      }, game),
+    disableAll: (game) =>
+      app.evaluate((_electron, target) => {
+        (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest.manager.disableAll(target as never);
+      }, game),
+    requestRename: (id) =>
+      app.evaluate(
+        ({ BrowserWindow }, { channel, target }) => {
+          BrowserWindow.getAllWindows()[0]?.webContents.send(channel, target);
+        },
+        { channel: CHANNELS.renameRequest, target: id },
+      ),
     removeAccount: (id) =>
       app.evaluate(async (_electron, target) => {
         const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;

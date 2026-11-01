@@ -236,7 +236,7 @@ describe('status', () => {
   test('disabled account shows Conta desligada and Ligar', async () => {
     const { app, page } = await start(account('a', { enabled: false }));
     await page.getByText('Conta desligada').waitFor();
-    await page.getByRole('button', { name: 'Ligar' }).click();
+    await page.locator('[data-account="a"]').getByRole('button', { name: 'Ligar' }).click();
     await app.waitForStatus('a', 'login');
     await page.getByText('Conta desligada').waitFor({ state: 'detached' });
     await expectViewOverGameArea(app, page, 'a');

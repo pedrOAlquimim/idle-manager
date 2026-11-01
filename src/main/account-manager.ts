@@ -12,7 +12,7 @@ import { partitionFor } from '../games/catalog';
 import { METRICS_INTERVAL_MS, OPEN_INTERVAL_MS } from '../shared/constants';
 import { accountColor, initialsOf } from '../shared/format';
 import { CHANNELS } from '../shared/ipc';
-import type { Command, MeasuredScreen } from '../shared/ipc';
+import type { ManagerCommand, MeasuredScreen } from '../shared/ipc';
 import { ProbeReadingSchema } from '../shared/schemas';
 import type {
   AccountId,
@@ -21,6 +21,7 @@ import type {
   AppData,
   AppView,
   Game,
+  GameId,
   GroupView,
   HistoryEvent,
   Layout,
@@ -100,7 +101,7 @@ export class AccountManager {
     }
   }
 
-  execute(command: Command): void {
+  execute(command: ManagerCommand): void {
     switch (command.type) {
       case 'select':
         this.select(command.accountId);
@@ -159,16 +160,22 @@ export class AccountManager {
       case 'detach':
       case 'reattach':
         throw new Error(`Command ${command.type} arrives in Task 11`);
-      case 'open-account-menu':
-      case 'open-group-menu':
-      case 'open-data-folder':
       case 'set-notifications':
-        throw new Error(`Command ${command.type} arrives in Task 10`);
+        this.updatePreferences({ notifications: command.enabled });
+        return;
       default: {
         const _exhaustive: never = command;
         throw new Error(`Unknown command ${String(_exhaustive)}`);
       }
     }
+  }
+
+  enableAll(game: GameId): void {
+    for (const account of this.data.accounts) if (account.gameId === game) this.setEnabled(account.id, true);
+  }
+
+  disableAll(game: GameId): void {
+    for (const account of this.data.accounts) if (account.gameId === game) this.setEnabled(account.id, false);
   }
 
   view(): AppView {

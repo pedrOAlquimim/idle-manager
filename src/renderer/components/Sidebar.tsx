@@ -129,7 +129,14 @@ export function Sidebar({ view, addingTo, onAddAccount }: SidebarProps) {
             >
               <PlusIcon />
             </button>
-            <button className="ib" type="button" aria-label="Opções do grupo"><MoreIcon /></button>
+            <button
+              className="ib"
+              type="button"
+              aria-label="Opções do grupo"
+              onClick={() => window.idleManager.send({ type: 'open-group-menu', gameId: group.gameId })}
+            >
+              <MoreIcon />
+            </button>
           </div>
           <div className="accounts">
             {view.accounts
