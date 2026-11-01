@@ -1,0 +1,19 @@
+appId: com.pedro.idlemanager
+productName: IdleManager
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - assets/**
+  - package.json
+linux:
+  target:
+    - target: deb
+      arch:
+        - x64
+  category: Game
+  icon: icon.png
+  executableName: idlemanager
+  syncDesktopName: true
+  maintainer: Pedro <pedro@localhost>
