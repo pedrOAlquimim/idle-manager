@@ -1,12 +1,14 @@
+import { totalmem } from 'node:os';
 import { join } from 'node:path';
 import { app, ipcMain, session, WebContentsView } from 'electron';
 import type { BrowserWindow, IpcMainEvent, WebContents } from 'electron';
 import { addAccount, registerNick, removeAccount, renameAccount } from '../core/accounts';
 import { canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../core/policies';
 import { initialSupervisorState, transition } from '../core/supervisor';
+import { appendEvent, appendSample, totalUsage, usageForProcess } from '../core/usage';
 import type { SupervisorAction, SupervisorEvent, SupervisorState } from '../core/supervisor';
 import { partitionFor } from '../games/catalog';
-import { OPEN_INTERVAL_MS } from '../shared/constants';
+import { METRICS_INTERVAL_MS, OPEN_INTERVAL_MS } from '../shared/constants';
 import { accountColor, initialsOf } from '../shared/format';
 import { CHANNELS } from '../shared/ipc';
 import type { Command, MeasuredScreen } from '../shared/ipc';
@@ -19,10 +21,13 @@ import type {
   AppView,
   Game,
   GroupView,
+  HistoryEvent,
   Layout,
   ProbeReading,
   StoredAccount,
+  UsageSample,
 } from '../shared/types';
+import { readProcessUsage } from './metrics';
 import type { Repository } from './repository';
 
 export interface AccountManagerDeps {
@@ -42,9 +47,13 @@ interface Slot {
   host: string;
   lastInputAt: number | null;
   openTimer: NodeJS.Timeout | null;
+  memoryMb: number[];
+  cpu: number[];
+  history: HistoryEvent[];
 }
 
 const TICK_MS = 1000;
+const BYTES_PER_MB = 1024 * 1024;
 const ATTENTION_STATUSES: readonly AccountStatus[] = ['login', 'notice', 'down', 'blocked'];
 const ALLOWED_PERMISSIONS: readonly string[] = ['clipboard-sanitized-write', 'fullscreen'];
 
@@ -60,9 +69,12 @@ export class AccountManager {
   private readonly slotBySender = new Map<number, Slot>();
   private readonly preparedPartitions = new Set<string>();
   private readonly ticker: NodeJS.Timeout;
+  private readonly sampler: NodeJS.Timeout;
   private data: AppData;
   private screens = new Map<AccountId, MeasuredScreen>();
   private nextOpenAt = 0;
+  private nextEventId = 1;
+  private totals: UsageSample = { memoryMb: 0, cpu: 0 };
 
   private readonly onProbeReading = (event: IpcMainEvent, raw: unknown): void => {
     const slot = this.slotBySender.get(event.sender.id);
@@ -76,6 +88,7 @@ export class AccountManager {
     for (const account of this.data.accounts) this.createSlot(account);
     ipcMain.on(CHANNELS.probeReading, this.onProbeReading);
     this.ticker = setInterval(() => this.tick(), TICK_MS);
+    this.sampler = setInterval(() => this.sample(), METRICS_INTERVAL_MS);
   }
 
   openEnabled(): void {
@@ -97,10 +110,16 @@ export class AccountManager {
         this.setEnabled(command.accountId, false);
         return;
       case 'go-home':
-        this.withPage(command.accountId, (contents, slot) => load(contents, slot.game.startUrl));
+        this.withPage(command.accountId, (contents, slot) => {
+          load(contents, slot.game.startUrl);
+          this.record(slot, 'Voltou ao início');
+        });
         return;
       case 'reload':
-        this.withPage(command.accountId, (contents) => contents.reload());
+        this.withPage(command.accountId, (contents, slot) => {
+          contents.reload();
+          this.record(slot, 'Recarregada');
+        });
         return;
       case 'toggle-sound':
         this.toggleSound(command.accountId);
@@ -154,9 +173,9 @@ export class AccountManager {
       groups,
       accounts,
       preferences: this.data.preferences,
-      totalMemoryMb: 0,
-      totalCpu: 0,
-      ramFraction: 0,
+      totalMemoryMb: this.totals.memoryMb,
+      totalCpu: this.totals.cpu,
+      ramFraction: Math.min(1, this.totals.memoryMb / (totalmem() / BYTES_PER_MB)),
       attentionCount: accounts.filter((account) => ATTENTION_STATUSES.includes(account.status)).length,
       version: app.getVersion(),
       now: Date.now(),
@@ -188,6 +207,7 @@ export class AccountManager {
 
   dispose(): void {
     clearInterval(this.ticker);
+    clearInterval(this.sampler);
     ipcMain.off(CHANNELS.probeReading, this.onProbeReading);
     for (const slot of this.slots.values()) this.stop(slot);
   }
@@ -203,6 +223,9 @@ export class AccountManager {
       host: new URL(game.startUrl).hostname,
       lastInputAt: null,
       openTimer: null,
+      memoryMb: [],
+      cpu: [],
+      history: [],
     };
     this.slots.set(account.id, slot);
     return slot;
@@ -223,6 +246,8 @@ export class AccountManager {
   private stop(slot: Slot): void {
     if (slot.openTimer !== null) clearTimeout(slot.openTimer);
     slot.openTimer = null;
+    slot.memoryMb = [];
+    slot.cpu = [];
     const view = slot.view;
     if (view !== null) {
       slot.view = null;
@@ -261,7 +286,11 @@ export class AccountManager {
     if (this.preparedPartitions.has(partition)) return;
     this.preparedPartitions.add(partition);
     const accountSession = session.fromPartition(partition);
-    accountSession.on('will-download', (event) => event.preventDefault());
+    accountSession.on('will-download', (event, _item, contents) => {
+      event.preventDefault();
+      const slot = this.slotBySender.get(contents.id);
+      if (slot !== undefined) this.record(slot, 'Download bloqueado');
+    });
     accountSession.setPermissionRequestHandler((_contents, permission, callback) => {
       callback(ALLOWED_PERMISSIONS.includes(permission));
     });
@@ -407,8 +436,10 @@ export class AccountManager {
     if (slot === undefined || account === undefined || account.enabled === enabled) return;
     this.commit(this.withAccount(id, { enabled }));
     if (enabled) {
+      this.record(slot, 'Ligada');
       this.start(slot);
     } else {
+      this.record(slot, 'Desligada');
       this.stop(slot);
       this.feed(slot, { type: 'disable', now: Date.now() });
     }
@@ -420,6 +451,8 @@ export class AccountManager {
     const muted = !account.muted;
     this.commit(this.withAccount(id, { muted }));
     this.webContentsOf(id)?.setAudioMuted(muted);
+    const slot = this.slots.get(id);
+    if (slot !== undefined) this.record(slot, muted ? 'Som desligado' : 'Som ligado');
   }
 
   private add(gameId: Game['id'], name: string): void {
@@ -429,7 +462,10 @@ export class AccountManager {
     if (!result.ok) return;
     this.commit(result.value.data);
     const slot = this.createSlot(result.value.account);
-    if (slot !== null) this.start(slot);
+    if (slot !== null) {
+      this.record(slot, 'Ligada');
+      this.start(slot);
+    }
   }
 
   private select(id: AccountId): void {
@@ -463,6 +499,28 @@ export class AccountManager {
     this.data = data;
     this.deps.repository.write(data);
     this.applyScreens();
+    this.publish();
+  }
+
+  private record(slot: Slot, text: string): void {
+    const event: HistoryEvent = { id: this.nextEventId, accountId: slot.accountId, text, at: Date.now() };
+    this.nextEventId += 1;
+    slot.history = appendEvent(slot.history, event);
+    this.publish();
+  }
+
+  // One sample per enabled account: its own renderer process. The totals cover every process of the app.
+  private sample(): void {
+    const usage = readProcessUsage();
+    this.totals = totalUsage(usage);
+    for (const slot of this.slots.values()) {
+      const contents = slot.view?.webContents;
+      if (contents === undefined || contents.isDestroyed()) continue;
+      const own = usageForProcess(usage, contents.getOSProcessId());
+      if (own === null) continue;
+      slot.memoryMb = appendSample(slot.memoryMb, own.memoryMb);
+      slot.cpu = appendSample(slot.cpu, own.cpu);
+    }
     this.publish();
   }
 
@@ -507,9 +565,9 @@ export class AccountManager {
         detached: false,
         host: slot.host,
         partition: partitionFor(account.gameId, account.id),
-        memoryMb: [],
-        cpu: [],
-        history: [],
+        memoryMb: slot.memoryMb,
+        cpu: slot.cpu,
+        history: slot.history,
       });
     }
     return views;
@@ -523,7 +581,7 @@ export class AccountManager {
       limit: game.accountLimit,
       accountIds: members.map((account) => account.id),
       enabledCount: members.filter((account) => account.status !== 'off').length,
-      memoryMb: 0,
+      memoryMb: members.reduce((sum, account) => sum + (account.memoryMb.at(-1) ?? 0), 0),
     };
   }
 }
