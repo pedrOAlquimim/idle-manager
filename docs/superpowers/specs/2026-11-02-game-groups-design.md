@@ -89,8 +89,8 @@ Acrescentadas agora:
 6. Nome de jogo vazio marca o campo como inválido. Nome igual ao de outro grupo mostra "Já existe um grupo com
    esse nome". Nome de conta vazio ou repetido no grupo segue a regra atual.
 
-A mesma validação roda na interface, para mostrar as mensagens, e no processo principal, que ignora e registra
-no console um comando inválido.
+A validação roda no processo principal, e a interface mostra a mensagem do erro que ele devolver. Os exemplos do
+modal que citam o Pokeidle ficam em `src/games`, porque nada fora dessa pasta pode citá-lo.
 
 ## Dados
 
