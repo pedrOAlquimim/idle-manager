@@ -71,6 +71,16 @@ describe('createGame', () => {
     expect(created(dataWith(JOGO_GROUP), { url: 'https://app.jogo.com/' }).game.id).toBe('idle-forest');
   });
 
+  test('a trailing dot does not make it another site', () => {
+    expect(createGame(dataWith(JOGO_GROUP), input({ url: 'https://jogo.com./' }))).toEqual({ ok: false, error: 'duplicate-site' });
+  });
+
+  test('a trailing dot does not hide the known game', () => {
+    const { game } = created(dataWith(), { url: 'https://pokeidle.io./' });
+    expect(game.id).toBe('pokeidle');
+    expect(gameFromStored(game).accountLimit).toBe(4);
+  });
+
   test('a second pokeidle address is refused', () => {
     const data = dataWith(POKEIDLE_GROUP);
     expect(createGame(data, input({ url: 'app.pokeidle.io' }))).toEqual({ ok: false, error: 'duplicate-site' });

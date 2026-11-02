@@ -11,8 +11,11 @@ export function parseGameUrl(raw: string): { ok: true; url: URL } | { ok: false;
   if (!URL.canParse(withScheme)) return { ok: false, error: 'invalid-url' };
   const url = new URL(withScheme);
   if (url.username !== '' || url.password !== '') return { ok: false, error: 'invalid-url' };
+  // `jogo.com.` is the same site as `jogo.com`, and it must not slip past the comparisons made on the host.
+  const hostname = url.hostname.replace(/\.+$/, '');
   const isWeb = url.protocol === 'https:' || url.protocol === 'http:';
-  if (!isWeb || !url.hostname.includes('.')) return { ok: false, error: 'not-a-site' };
+  if (!isWeb || !hostname.includes('.')) return { ok: false, error: 'not-a-site' };
+  url.hostname = hostname;
   return { ok: true, url };
 }
 

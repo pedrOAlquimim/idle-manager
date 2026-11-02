@@ -25,6 +25,9 @@ const probe = (now: number, partial: Partial<ProbeReading> = {}): SupervisorEven
   now,
 });
 const notify = (title: string, body = ''): NotifyAction => ({ type: 'notify', title, body });
+// The manager's clock ticks every second, and a tick after a longer gap reads as sleep: this is the tick
+// right after the one a second earlier.
+const tickAt = (state: SupervisorState, now: number) => transition({ ...state, lastTickAt: now - 1000 }, ev('tick', now));
 
 // What the login form looks like: the page is alive, the game's UI is the login portal, no session yet.
 const LOGIN_FORM: Partial<ProbeReading> = { hasSession: false, gameVisible: false, nick: null };
@@ -85,7 +88,7 @@ function reachDown(): { state: SupervisorState; at: number } {
   for (const delay of [5000, 15000, 60000]) {
     state = transition(state, ev('crash', now)).state;
     now += delay;
-    state = apply(state, [ev('tick', now), ev('load-started', now)]).state;
+    state = transition(tickAt(state, now).state, ev('load-started', now)).state;
   }
   const last = transition(state, ev('crash', now + 1));
   return { state: last.state, at: now + 1 };
@@ -179,13 +182,47 @@ describe('readings', () => {
   });
 });
 
+describe('a machine that slept', () => {
+  test('a gap between ticks is sleep, not silence, even when the resume event comes later', () => {
+    let state = connected(0);
+    state = transition(state, ev('tick', 1000)).state;
+    const woke = transition(state, ev('tick', 3_600_000));
+    expect(woke.actions).toEqual([]);
+    expect(woke.state).toMatchObject({ status: 'connected', attempts: 0, nextReloadAt: null, lastProbeAt: 3_600_000 });
+    expect(transition(woke.state, ev('resumed', 3_600_100)).state.status).toBe('connected');
+  });
+
+  test('an account that used all its attempts is not taken down by the sleep', () => {
+    let state: SupervisorState = { ...connected(0), attempts: 3 };
+    state = transition(state, ev('tick', 1000)).state;
+    const woke = transition(state, ev('tick', 3_600_000));
+    expect(woke.state.status).toBe('connected');
+    expect(woke.actions).toEqual([]);
+  });
+
+  test('the time a missing game waited does not count across the sleep', () => {
+    let state = connected(0);
+    state = transition(state, probe(1000, { gamePresent: false })).state;
+    state = transition(state, ev('tick', 2000)).state;
+    const woke = transition(state, ev('tick', 3_600_000));
+    expect(woke.actions).toEqual([]);
+    expect(woke.state.gameMissingSince).toBe(3_600_000);
+  });
+
+  test('a pause too short to be sleep still counts as silence', () => {
+    const start = connected(0);
+    const ticked = transition(start, ev('tick', start.lastProbeAt + 59_000)).state;
+    expect(transition(ticked, ev('tick', start.lastProbeAt + 60_000)).state.status).toBe('reloading');
+  });
+});
+
 describe('failures and reloads', () => {
   test.each(['crash', 'load-failed', 'hung'] as const)('%s schedules a reload in 5s and fires only on the right tick', (type) => {
     const failed = apply(connected(0), [ev(type, 0)]);
     expect(failed.state).toMatchObject({ status: 'reloading', attempts: 1, nextReloadAt: 5000 });
     expect(failed.actions).toEqual([]);
     expect(transition(failed.state, ev('tick', 4999)).actions).toEqual([]);
-    expect(transition(failed.state, ev('tick', 5000)).actions).toEqual([{ type: 'reload' }]);
+    expect(transition(failed.state, ev('tick', 5000)).actions).toEqual([{ type: type === 'hung' ? 'restart' : 'reload' }]);
   });
 
   test('a navigation starts the reload that was scheduled: loading again, schedule consumed', () => {
@@ -199,7 +236,7 @@ describe('failures and reloads', () => {
     for (const delay of [5000, 15000, 60000]) {
       const failed = transition(state, ev('crash', now));
       expect(failed.state.nextReloadAt).toBe(now + delay);
-      const fired = transition(failed.state, ev('tick', now + delay));
+      const fired = tickAt(failed.state, now + delay);
       expect(fired.actions).toEqual([{ type: 'reload' }]);
       now += delay;
       state = transition(fired.state, ev('load-started', now)).state;
@@ -228,7 +265,7 @@ describe('failures and reloads', () => {
   test('hung reloads, but recovered before the deadline cancels it', () => {
     const hung = apply(connected(0), [ev('hung', 0)]);
     expect(hung.state).toMatchObject({ status: 'reloading', hung: true, nextReloadAt: 5000, attempts: 1 });
-    expect(transition(hung.state, ev('tick', 5000)).actions).toEqual([{ type: 'reload' }]);
+    expect(transition(hung.state, ev('tick', 5000)).actions).toEqual([{ type: 'restart' }]);
 
     const recovered = apply(hung.state, [ev('recovered', 1000), ev('tick', 5000)]);
     expect(recovered.actions).toEqual([]);
@@ -245,7 +282,7 @@ describe('failures and reloads', () => {
     expect(transition(state, ev('tick', 59_999)).actions).toEqual([]);
     const silent = transition(state, ev('tick', 60_000));
     expect(silent.state).toMatchObject({ status: 'reloading', attempts: 1, nextReloadAt: 65_000 });
-    expect(transition(silent.state, ev('tick', 65_000)).actions).toEqual([{ type: 'reload' }]);
+    expect(transition(silent.state, ev('tick', 65_000)).actions).toEqual([{ type: 'restart' }]);
   });
 
   test('a healthy probe cancels a pending reload and gives the attempt back', () => {
@@ -317,7 +354,7 @@ describe('failures and reloads', () => {
     const run = simulate(state, 2000, 600_000, () => null);
     expect(run.reloads).toEqual([]);
     expect(run.notifications).toEqual([]);
-    expect(run.state).toEqual(state);
+    expect({ ...run.state, lastTickAt: state.lastTickAt }).toEqual(state);
   });
 
   test('hung while a reload is already pending only flags the hang', () => {
@@ -331,7 +368,7 @@ describe('retry and block', () => {
   test('retry from down reloads and resets attempts', () => {
     const down = reachDown();
     const retried = transition(down.state, ev('retry', down.at + 1000));
-    expect(retried.actions).toEqual([{ type: 'reload' }]);
+    expect(retried.actions).toEqual([{ type: 'restart' }]);
     expect(retried.state).toMatchObject({ status: 'loading', attempts: 0, message: null, nextReloadAt: null });
   });
 
@@ -361,8 +398,33 @@ describe('retry and block', () => {
   test('retry after left-site loads the page again', () => {
     const left = transition(loading(0), leftSite('outro.com', 100)).state;
     const retried = transition(left, ev('retry', 200));
-    expect(retried.actions).toEqual([{ type: 'reload' }]);
+    expect(retried.actions).toEqual([{ type: 'restart' }]);
     expect(retried.state).toMatchObject({ status: 'loading', attempts: 0, message: null });
+  });
+
+  test('a page that stopped answering is restarted, not reloaded in place', () => {
+    const hung = transition(connected(0), ev('hung', 100)).state;
+    expect(transition(hung, ev('tick', 5100)).actions).toEqual([{ type: 'restart' }]);
+  });
+
+  test('a page that went silent is restarted, because a reload would wait for it too', () => {
+    const start = connected(0);
+    const silent = transition(start, ev('tick', start.lastProbeAt + 60_000)).state;
+    expect(silent.status).toBe('reloading');
+    expect(transition(silent, ev('tick', silent.nextReloadAt ?? 0)).actions).toEqual([{ type: 'restart' }]);
+  });
+
+  test('a page that crashed only needs a load', () => {
+    const crashed = transition(connected(0), ev('crash', 100)).state;
+    expect(transition(crashed, ev('tick', 5100)).actions).toEqual([{ type: 'reload' }]);
+  });
+
+  test('a restart leaves no trace of the hang behind', () => {
+    const hung = transition(connected(0), ev('hung', 100)).state;
+    const fired = transition(hung, ev('tick', 5100)).state;
+    expect(fired.hung).toBe(false);
+    const again = transition(fired, ev('crash', 6000)).state;
+    expect(tickAt(again, 21_000).actions).toEqual([{ type: 'reload' }]);
   });
 
   test('retry outside down does nothing', () => {

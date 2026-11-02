@@ -1,5 +1,6 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, dialog, Notification, powerMonitor, powerSaveBlocker, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, Notification, powerMonitor, powerSaveBlocker, shell } from 'electron';
+import type { Tray } from 'electron';
 import { CHANNELS } from '../shared/ipc';
 import { AccountManager } from './account-manager';
 import { registerIpc } from './ipc';
@@ -12,6 +13,13 @@ const dataDirectory = process.env.IDLEMANAGER_DATA_DIR;
 if (dataDirectory) app.setPath('userData', dataDirectory);
 
 const testing = process.env.IDLEMANAGER_TEST === '1';
+
+// Electron's default for an uncaught error is a box that stops the main process until someone clicks it:
+// the wrong failure for an app that runs alone for hours, with every account behind it.
+process.on('uncaughtException', (error) => console.error('Uncaught exception:', error));
+
+// Held here so the garbage collector does not take the icon away while the window is hidden.
+let tray: Tray | null = null;
 
 // The lock is keyed by the data folder, so a second launch finds the first one and only asks it to show itself.
 const isFirstInstance = app.requestSingleInstanceLock();
@@ -60,6 +68,8 @@ function start(): void {
     return;
   }
 
+  // Without this Electron keeps its own English menu, with shortcuts that reload the interface.
+  Menu.setApplicationMenu(null);
   const window = createWindow();
   const openedUrls: string[] = [];
   const notifications: { title: string; body: string }[] = [];
@@ -111,7 +121,7 @@ function start(): void {
   powerMonitor.on('resume', () => manager.onResume());
 
   // A tray icon per test run would flicker in the real desktop panel: tests cover the menu on its own.
-  if (!testing) createTray(show, quit);
+  if (!testing) tray = createTray(show, quit);
   if (testing) (globalThis as unknown as Record<string, unknown>).idleManagerTest = { manager, openedUrls, notifications, power: guard, quit };
 
   void window.loadFile(join(__dirname, 'renderer', 'index.html'));

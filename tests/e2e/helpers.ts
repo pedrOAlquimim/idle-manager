@@ -112,6 +112,15 @@ export async function serveOtherSite(): Promise<OtherSite> {
 export interface TestApp {
   app: ElectronApplication;
   createGame(input: NewGameInput): Promise<NewGameError | null>;
+  reportUnresponsive(id: string): Promise<void>;
+  pageUrl(id: string): Promise<string | null>;
+  delayNextOpen(delayMs: number): Promise<void>;
+  fromAnotherPage(): Promise<{ view: string; game: string }>;
+  menuState(): Promise<{ menu: boolean; visible: boolean }>;
+  clipboard(text?: string): Promise<string>;
+  crashInterface(): Promise<void>;
+  interfaceRendered(): Promise<boolean>;
+  throwInMain(message: string): Promise<number>;
   interfaceHasKeyboard(): Promise<boolean>;
   dataDir: string;
   gamePort: number;
@@ -203,7 +212,7 @@ export async function launchApp(options: { data?: AppData; dataDir?: string; por
   const errors: string[] = [];
   app.process().stderr?.on('data', (chunk: Buffer) => {
     for (const line of String(chunk).split('\n')) {
-      if (/Uncaught|UnhandledPromiseRejection|TypeError|ReferenceError|Object has been destroyed/.test(line)) errors.push(line);
+      if (/Uncaught|UnhandledPromiseRejection|TypeError|ReferenceError|Object has been destroyed|boom/.test(line)) errors.push(line);
     }
   });
 
@@ -217,6 +226,83 @@ export async function launchApp(options: { data?: AppData; dataDir?: string; por
     mainProcessErrors: () => errors,
     dataDir,
     gamePort: port,
+    reportUnresponsive: (id) =>
+      app.evaluate((_electron, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        test.manager.webContentsOf(target as AccountId)?.emit('unresponsive');
+      }, id),
+    pageUrl: (id) =>
+      app.evaluate((_electron, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        return test.manager.webContentsOf(target as AccountId)?.getURL() ?? null;
+      }, id),
+    delayNextOpen: (delayMs) =>
+      app.evaluate((_electron, delay) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        (test.manager as unknown as { nextOpenAt: number }).nextOpenAt = Date.now() + delay;
+      }, delayMs),
+    // A second page holding the interface's own preload, as a compromised renderer could.
+    fromAnotherPage: () =>
+      app.evaluate(async ({ app: electronApp, BrowserWindow, ipcMain }) => {
+        const other = new BrowserWindow({
+          show: false,
+          webPreferences: {
+            preload: `${electronApp.getAppPath()}/dist/ui-preload.js`,
+            sandbox: true,
+            contextIsolation: true,
+          },
+        });
+        await other.loadURL('data:text/html,<title>other</title>');
+        const outcome = (await other.webContents.executeJavaScript(`(async () => {
+          const attempt = (call) => call().then(() => 'answered', () => 'refused');
+          window.idleManager.send({ type: 'toggle-sidebar' });
+          const view = await attempt(() => window.idleManager.requestView());
+          const game = await attempt(() =>
+            window.idleManager.createGame({ name: 'Intruso', url: 'https://intruso.example.com/', accountName: 'Principal' }),
+          );
+          return { view, game };
+        })()`)) as { view: string; game: string };
+        ipcMain.emit('probe:escape', { sender: other.webContents });
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        other.destroy();
+        return outcome;
+      }),
+    menuState: () =>
+      app.evaluate(({ BrowserWindow, Menu }) => ({
+        menu: Menu.getApplicationMenu() !== null,
+        visible: BrowserWindow.getAllWindows()[0]?.isMenuBarVisible() ?? false,
+      })),
+    clipboard: (text) =>
+      app.evaluate(({ clipboard }, value) => {
+        if (value !== undefined) clipboard.writeText(value);
+        return clipboard.readText();
+      }, text),
+    crashInterface: () =>
+      app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.webContents.forcefullyCrashRenderer();
+      }),
+    interfaceRendered: () =>
+      app.evaluate(async ({ BrowserWindow }) => {
+        const contents = BrowserWindow.getAllWindows()[0]?.webContents;
+        if (contents === undefined || contents.isCrashed() || contents.isLoading()) return false;
+        return Promise.race([
+          (contents.executeJavaScript(`document.querySelector('.status') !== null`) as Promise<boolean>).catch(() => false),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500)),
+        ]);
+      }),
+    // Takes the error box away first: what is under test is whether Electron's own handler ran at all.
+    throwInMain: (message) =>
+      app.evaluate(async ({ dialog }, text) => {
+        let boxes = 0;
+        dialog.showErrorBox = () => {
+          boxes += 1;
+        };
+        setTimeout(() => {
+          throw new Error(text);
+        }, 0);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return boxes;
+      }, message),
     interfaceHasKeyboard: () =>
       app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.isFocused() ?? false),
     createGame: async (input) => (await testApp.ui()).evaluate((value) => window.idleManager.createGame(value), input),

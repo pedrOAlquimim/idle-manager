@@ -6,6 +6,7 @@ export const GAME_MISSING_MS = 30000;
 export const STABLE_MS = 60000;
 export const METRICS_INTERVAL_MS = 2000;
 export const USER_GESTURE_WINDOW_MS = 3000;
+export const SLEEP_GAP_MS = 10000;
 
 export const USAGE_SAMPLES = 30;
 export const EVENTS_PER_ACCOUNT = 50;

@@ -56,6 +56,7 @@ interface Slot {
   accountId: AccountId;
   game: Game;
   view: WebContentsView | null;
+  contentsId: number | null;
   supervisor: SupervisorState;
   host: string;
   lastInputAt: number | null;
@@ -65,6 +66,7 @@ interface Slot {
   history: HistoryEvent[];
   detached: BaseWindow | null;
   pageLoaded: boolean;
+  restarting: boolean;
 }
 
 const TICK_MS = 1000;
@@ -264,6 +266,11 @@ export class AccountManager {
     if (this.data.preferences.layout === 'focus') this.setLayout('grid');
   }
 
+  // For the Esc key of a game page: only a page of an account may ask.
+  leaveFocusFrom(sender: WebContents): void {
+    if (this.slotBySender.has(sender.id)) this.leaveFocus();
+  }
+
   // Returns whether the key was used, so the caller keeps it from reaching the page.
   handleShortcut(input: KeyPress): boolean {
     const position = accountShortcut(input);
@@ -292,6 +299,7 @@ export class AccountManager {
       accountId: account.id,
       game,
       view: null,
+      contentsId: null,
       supervisor: initialSupervisorState(),
       host: new URL(game.startUrl).hostname,
       lastInputAt: null,
@@ -301,6 +309,7 @@ export class AccountManager {
       history: [],
       detached: null,
       pageLoaded: false,
+      restarting: false,
     };
     this.slots.set(account.id, slot);
     return slot;
@@ -308,10 +317,11 @@ export class AccountManager {
 
   // Accounts open one at a time, OPEN_INTERVAL_MS apart, whoever asked for them.
   private start(slot: Slot): void {
-    this.feed(slot, { type: 'enable', now: Date.now() });
     const now = Date.now();
     const openAt = Math.max(now, this.nextOpenAt);
     this.nextOpenAt = openAt + OPEN_INTERVAL_MS;
+    // The account's clock starts at its turn: a long queue must not read as a page that went silent.
+    this.feed(slot, { type: 'enable', now: openAt });
     slot.openTimer = setTimeout(() => {
       slot.openTimer = null;
       this.open(slot);
@@ -326,7 +336,7 @@ export class AccountManager {
     const view = slot.view;
     if (view !== null) {
       slot.view = null;
-      this.slotBySender.delete(view.webContents.id);
+      if (slot.contentsId !== null) this.slotBySender.delete(slot.contentsId);
       const detached = slot.detached;
       slot.detached = null;
       if (detached !== null) {
@@ -337,7 +347,8 @@ export class AccountManager {
       } else if (!this.deps.window.isDestroyed()) {
         this.deps.window.contentView.removeChildView(view);
       }
-      if (!view.webContents.isDestroyed()) view.webContents.close();
+      const contents = view.webContents as WebContents | undefined;
+      if (contents !== undefined && !contents.isDestroyed()) contents.close();
     }
   }
 
@@ -359,9 +370,10 @@ export class AccountManager {
     });
     view.setBackgroundColor(VIEW_BACKGROUND);
     slot.view = view;
+    slot.contentsId = view.webContents.id;
     this.slotBySender.set(view.webContents.id, slot);
     view.webContents.setAudioMuted(account.muted);
-    this.watchPage(slot, view.webContents);
+    this.watchPage(slot, view);
     this.deps.window.contentView.addChildView(view);
     this.applyScreens();
     load(view.webContents, slot.game.startUrl);
@@ -373,15 +385,19 @@ export class AccountManager {
     const accountSession = session.fromPartition(partition);
     accountSession.on('will-download', (event, _item, contents) => {
       event.preventDefault();
-      const slot = this.slotBySender.get(contents.id);
+      // A download can outlive the page that started it.
+      const slot = this.slotBySender.get(contents?.id);
       if (slot !== undefined) this.record(slot, 'Download bloqueado');
     });
     accountSession.setPermissionRequestHandler((_contents, permission, callback) => {
       callback(ALLOWED_PERMISSIONS.includes(permission));
     });
+    // Requests are only half of it: without this, a page asking what it may do hears "granted" for everything.
+    accountSession.setPermissionCheckHandler((_contents, permission) => ALLOWED_PERMISSIONS.includes(permission));
   }
 
-  private watchPage(slot: Slot, contents: WebContents): void {
+  private watchPage(slot: Slot, view: WebContentsView): void {
+    const contents = view.webContents;
     const report = (type: Exclude<SupervisorEvent['type'], 'probe' | 'left-site'>): void => {
       if (slot.view?.webContents === contents) this.feed(slot, { type, now: Date.now() });
     };
@@ -389,7 +405,17 @@ export class AccountManager {
       slot.lastInputAt = Date.now();
     };
 
-    contents.on('render-process-gone', () => report('crash'));
+    contents.on('render-process-gone', () => {
+      if (!slot.restarting) {
+        report('crash');
+        return;
+      }
+      slot.restarting = false;
+      load(contents, slot.game.startUrl);
+    });
+    contents.once('destroyed', () => this.forgetClosedPage(slot, view));
+    // A page must not be able to refuse a reload, a return to the start or being closed by a block.
+    contents.on('will-prevent-unload', (event) => event.preventDefault());
     contents.on('unresponsive', () => report('hung'));
     contents.on('responsive', () => report('recovered'));
     contents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
@@ -434,6 +460,17 @@ export class AccountManager {
     };
     contents.on('will-navigate', keepInside);
     contents.on('will-redirect', keepInside);
+  }
+
+  // A page can close itself with window.close(), which leaves the view without contents. To the account it
+  // is the same as a crash, so the same path reopens it. stop() lets go of the view first, and ends here.
+  private forgetClosedPage(slot: Slot, view: WebContentsView): void {
+    if (slot.view !== view) return;
+    slot.view = null;
+    if (slot.contentsId !== null) this.slotBySender.delete(slot.contentsId);
+    if (slot.detached !== null) slot.detached.close();
+    else if (!this.deps.window.isDestroyed()) this.deps.window.contentView.removeChildView(view);
+    this.feed(slot, { type: 'crash', now: Date.now() });
   }
 
   private decide(slot: Slot, url: string): ReturnType<typeof decideNavigation> {
@@ -525,6 +562,9 @@ export class AccountManager {
         if (slot.view === null) this.open(slot);
         else load(slot.view.webContents, slot.game.startUrl);
         return;
+      case 'restart':
+        this.restartPage(slot);
+        return;
       case 'notify': {
         if (!this.data.preferences.notifications) return;
         const name = this.stored(slot.accountId)?.name ?? '';
@@ -536,6 +576,23 @@ export class AccountManager {
         throw new Error(`Unknown action ${String(_exhaustive)}`);
       }
     }
+  }
+
+  // The renderer is killed first, so the page does not need to answer, and the load waits for the news that
+  // it is gone: a load sent earlier would die with it. That crash is not a new failure, because the attempt
+  // was already counted.
+  private restartPage(slot: Slot): void {
+    if (slot.view === null) {
+      this.open(slot);
+      return;
+    }
+    const contents = slot.view.webContents;
+    if (contents.isCrashed()) {
+      load(contents, slot.game.startUrl);
+      return;
+    }
+    slot.restarting = true;
+    contents.forcefullyCrashRenderer();
   }
 
   private setEnabled(id: AccountId, enabled: boolean): void {
@@ -690,12 +747,15 @@ export class AccountManager {
     for (const slot of this.slots.values()) {
       const view = slot.view;
       if (view === null || slot.detached !== null) continue;
+      // One bad view must not stop the others from being placed.
+      const contents = view.webContents as WebContents | undefined;
+      if (contents === undefined || contents.isDestroyed()) continue;
       const screen = this.screens.get(slot.accountId);
       const hidden = isScreenHidden({ status: slot.supervisor.status, detached: false });
       view.setVisible(screen !== undefined && !hidden && !this.modalOpen);
       if (screen === undefined) continue;
       view.setBounds(screen.rect);
-      view.webContents.setZoomFactor(zoomForScreen(this.data.preferences.layout, screen.rect.height));
+      contents.setZoomFactor(zoomForScreen(this.data.preferences.layout, screen.rect.height));
     }
   }
 

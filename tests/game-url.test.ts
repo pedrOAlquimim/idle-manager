@@ -8,6 +8,8 @@ describe('parseGameUrl', () => {
     ['http://jogo.com/', 'http://jogo.com/'],
     ['jogo.com/a?b=1#c', 'https://jogo.com/a?b=1#c'],
     ['127.0.0.2:8000', 'https://127.0.0.2:8000/'],
+    ['https://pokeidle.io./app', 'https://pokeidle.io/app'],
+    ['jogo.com..', 'https://jogo.com/'],
   ])('accepts %j as %s', (raw, href) => {
     const parsed = parseGameUrl(raw);
     expect(parsed.ok && parsed.url.href).toBe(href);
@@ -27,6 +29,7 @@ describe('parseGameUrl', () => {
     ['file:///etc/passwd'],
     ['localhost:3000'],
     ['https://localhost/'],
+    ['https://./'],
   ])('refuses %j as not being a site', (raw) => {
     expect(parseGameUrl(raw)).toEqual({ ok: false, error: 'not-a-site' });
   });
