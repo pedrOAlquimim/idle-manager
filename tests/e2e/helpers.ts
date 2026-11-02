@@ -13,7 +13,7 @@ import { INITIAL_DATA } from '../../src/shared/schemas';
 import { accountId, gameId } from '../../src/shared/types';
 import { CHANNELS } from '../../src/shared/ipc';
 import type { ManagerCommand } from '../../src/shared/ipc';
-import type { AccountId, AccountStatus, AccountView, AppData, AppView, Rect, StoredAccount, NewGameError, NewGameInput } from '../../src/shared/types';
+import type { AccountId, AccountStatus, AccountView, AppData, AppView, GameId, Rect, StoredAccount, NewGameError, NewGameInput } from '../../src/shared/types';
 
 interface TestHook {
   manager: AccountManager;
@@ -140,6 +140,7 @@ export interface TestApp {
   disableAll(game: string): Promise<void>;
   requestRename(id: string): Promise<void>;
   removeAccount(id: string): Promise<void>;
+  removeGame(id: string): Promise<void>;
   openedUrls(): Promise<string[]>;
   hasPage(id: string): Promise<boolean>;
   inPage<T>(id: string, script: string): Promise<T>;
@@ -361,6 +362,11 @@ export async function launchApp(options: { data?: AppData; dataDir?: string; por
         },
         { channel: CHANNELS.renameRequest, target: id },
       ),
+    removeGame: (id) =>
+      app.evaluate(async (_electron, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        await test.manager.removeGame(target as GameId);
+      }, id),
     removeAccount: (id) =>
       app.evaluate(async (_electron, target) => {
         const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;

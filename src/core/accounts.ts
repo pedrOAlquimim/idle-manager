@@ -133,6 +133,21 @@ export function removeAccount(data: AppData, id: AccountId): AppData {
   };
 }
 
+// Unlike removing one account, this keeps the nicks: the game keeps counting them, and a group made again
+// for the same game must still know them.
+export function removeGame(data: AppData, game: GameId): AppData {
+  if (!data.games.some((candidate) => candidate.id === game)) return data;
+  const accounts = data.accounts.filter((account) => account.gameId !== game);
+  const selected = data.accounts.find((account) => account.id === data.preferences.selectedId);
+  const selectedId = selected !== undefined && selected.gameId !== game ? selected.id : (accounts[0]?.id ?? null);
+  return {
+    ...data,
+    games: data.games.filter((candidate) => candidate.id !== game),
+    accounts,
+    preferences: { ...data.preferences, selectedId },
+  };
+}
+
 export function registerNick(
   data: AppData,
   game: Game,

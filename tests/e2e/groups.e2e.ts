@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from 'playwright-core';
 import { afterEach, describe, expect, test } from 'vitest';
-import { gameId } from '../../src/shared/types';
+import { accountId, gameId } from '../../src/shared/types';
 import type { StoredAccount } from '../../src/shared/types';
 import { account, dataWith, launchApp, serveOtherSite } from './helpers';
 import type { OtherSite, TestApp } from './helpers';
@@ -195,5 +195,75 @@ describe('a group of another site', () => {
     expect(await app.createGame(group(other))).toBeNull();
     expect(await app.createGame({ ...group(other), name: 'De novo' })).toBe('duplicate-site');
     expect((await app.view()).groups).toHaveLength(2);
+  });
+});
+
+describe('removing a group', () => {
+  test('clears its logins', async () => {
+    const { app, other } = await start();
+    await app.createGame(group(other));
+    await app.waitForStatus('principal', 'connected', 15000);
+    await app.inPage('principal', `localStorage.setItem('mark', 'one'); null`);
+
+    await app.removeGame('outro');
+    expect((await app.view()).groups.map((candidate) => candidate.gameId)).toEqual(['pokeidle']);
+    expect(await app.hasPage('principal')).toBe(false);
+
+    expect(await app.createGame(group(other))).toBeNull();
+    await app.waitForStatus('principal', 'connected', 20000);
+    expect(await app.inPage('principal', `localStorage.getItem('mark')`)).toBeNull();
+  });
+
+  test('keeps the nicks of the PokeIdle group', async () => {
+    const { app } = await start(account('a'));
+    await app.waitForStatus('a', 'login');
+    await app.inPage('a', `signIn('Ash')`);
+    await app.waitForStatus('a', 'connected');
+    expect(app.storedData().nicks).toEqual({ pokeidle: ['Ash'] });
+
+    await app.removeGame('pokeidle');
+    expect(app.storedData().nicks).toEqual({ pokeidle: ['Ash'] });
+    expect(app.storedData().accounts).toEqual([]);
+    expect(app.storedData().games).toEqual([]);
+  });
+
+  test('shows the next group when the selected one goes', async () => {
+    const { app, other } = await start(account('a'));
+    await app.createGame(group(other));
+    expect((await app.view()).preferences.selectedId).toBe('principal');
+    await app.removeGame('outro');
+    expect((await app.view()).preferences.selectedId).toBe('a');
+  });
+
+  test('removing the last group shows the first group screen', async () => {
+    const { app, page } = await start(account('a'));
+    await app.removeGame('pokeidle');
+    await page.getByText('Crie seu primeiro grupo').waitFor();
+    expect((await app.view()).preferences.selectedId).toBeNull();
+  });
+
+  test('removing the last account keeps the group', async () => {
+    const { app, page } = await start(account('a'));
+    await app.removeAccount('a');
+    await page.getByText('Adicione sua primeira conta').waitFor();
+    expect((await app.view()).groups).toHaveLength(1);
+    expect(app.storedData().accounts).toEqual([]);
+    expect(app.storedData().games.map((game) => game.id)).toEqual(['pokeidle']);
+  });
+
+  test('a detached account and one waiting to open go with no error and nothing opens later', async () => {
+    const { app } = await start(account('a'));
+    await app.waitForStatus('a', 'login');
+    await app.execute({ type: 'detach', accountId: accountId('a') });
+    await app.waitFor(async () => (await app.accountView('a')).detached, 5000);
+    await app.execute({ type: 'add-account', gameId: gameId('pokeidle'), name: 'Alt 1' });
+    expect((await app.detachedState('a')).windows).toBe(2);
+
+    await app.removeGame('pokeidle');
+    await new Promise((resolve) => setTimeout(resolve, 6500));
+    expect((await app.detachedState('a')).windows).toBe(1);
+    expect(await app.hasPage('a')).toBe(false);
+    expect(await app.hasPage('alt-1')).toBe(false);
+    expect(app.mainProcessErrors()).toEqual([]);
   });
 });

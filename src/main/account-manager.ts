@@ -2,7 +2,15 @@ import { totalmem } from 'node:os';
 import { join } from 'node:path';
 import { app, ipcMain, session, WebContentsView } from 'electron';
 import type { BaseWindow, BrowserWindow, IpcMainEvent, WebContents } from 'electron';
-import { addAccount, partitionFor, registerNick, removeAccount, renameAccount, suggestName } from '../core/accounts';
+import {
+  addAccount,
+  partitionFor,
+  registerNick,
+  removeAccount,
+  removeGame,
+  renameAccount,
+  suggestName,
+} from '../core/accounts';
 import { accountShortcut, canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../core/policies';
 import type { KeyPress } from '../core/policies';
 import { initialSupervisorState, transition } from '../core/supervisor';
@@ -217,14 +225,28 @@ export class AccountManager {
   }
 
   async removeAccount(id: AccountId): Promise<void> {
+    if (!(await this.dropSlot(id))) return;
+    this.commit(removeAccount(this.data, id));
+  }
+
+  // Every account of the game goes, and so do their logins. One commit at the end, after all of them: the
+  // data never lists a game whose accounts are half gone.
+  async removeGame(id: GameId): Promise<void> {
+    const members = this.data.accounts.filter((account) => account.gameId === id);
+    await Promise.all(members.map((account) => this.dropSlot(account.id)));
+    this.commit(removeGame(this.data, id));
+  }
+
+  // Closes the account's page and window and wipes its partition. False when it was not running here.
+  private async dropSlot(id: AccountId): Promise<boolean> {
     const slot = this.slots.get(id);
-    if (slot === undefined) return;
+    if (slot === undefined) return false;
     this.stop(slot);
     this.slots.delete(id);
     const partition = session.fromPartition(partitionFor(slot.game.id, id));
     await partition.clearStorageData();
     await partition.clearCache();
-    this.commit(removeAccount(this.data, id));
+    return true;
   }
 
   onResume(): void {

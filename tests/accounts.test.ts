@@ -5,6 +5,7 @@ import {
   generateAccountId,
   registerNick,
   removeAccount,
+  removeGame,
   renameAccount,
   suggestName,
 } from '../src/core/accounts';
@@ -281,5 +282,48 @@ describe('accountsForGame', () => {
     const data = withAccounts(['x'], OTHER_GAME, withAccounts(['a', 'b']));
     expect(accountsForGame(data, POKEIDLE.id).map((account) => account.id)).toEqual(['a', 'b']);
     expect(accountsForGame(data, OTHER_GAME.id).map((account) => account.id)).toEqual(['x']);
+  });
+});
+
+describe('removeGame', () => {
+  const twoGames = (): AppData => {
+    const first = withAccounts(['a', 'b'], POKEIDLE);
+    const withGames: AppData = deepFreeze({
+      ...structuredClone(first),
+      games: [
+        { id: POKEIDLE.id, name: 'PokeIdle', startUrl: POKEIDLE.startUrl },
+        { id: OTHER_GAME.id, name: 'Other', startUrl: OTHER_GAME.startUrl },
+      ],
+    });
+    return withAccounts(['x'], OTHER_GAME, withGames);
+  };
+
+  test('drops the game and its accounts and keeps the nicks', () => {
+    const data = deepFreeze({ ...structuredClone(register(twoGames(), idAt(twoGames(), 0), 'Ash')) });
+    const after = removeGame(data, POKEIDLE.id);
+    expect(after.games.map((game) => game.id)).toEqual(['other']);
+    expect(after.accounts.map((account) => account.id)).toEqual(['x']);
+    expect(after.nicks).toEqual({ pokeidle: ['Ash'] });
+  });
+
+  test('moves the selection to the first remaining account when the selected one goes', () => {
+    const data = twoGames();
+    expect(data.preferences.selectedId).toBe(idAt(data, 0));
+    expect(removeGame(data, POKEIDLE.id).preferences.selectedId).toBe('x');
+  });
+
+  test('leaves the selection alone when it is in another game', () => {
+    const data = deepFreeze({ ...structuredClone(twoGames()), preferences: { ...twoGames().preferences, selectedId: accountId('x') } });
+    expect(removeGame(data, POKEIDLE.id).preferences.selectedId).toBe('x');
+  });
+
+  test('removing the last game empties the selection', () => {
+    const once = removeGame(twoGames(), POKEIDLE.id);
+    expect(removeGame(once, OTHER_GAME.id).preferences.selectedId).toBeNull();
+  });
+
+  test('a game that does not exist changes nothing', () => {
+    const data = twoGames();
+    expect(removeGame(data, gameId('ghost'))).toEqual(data);
   });
 });
