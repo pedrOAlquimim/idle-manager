@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { GAMES, POKEIDLE, partitionFor } from '../src/games/catalog';
+import { gameFromStored, knownGameIds, POKEIDLE, recognizeGame } from '../src/games/catalog';
+import { partitionFor } from '../src/core/accounts';
 import {
   EVENTS_IN_PANEL,
   EVENTS_PER_ACCOUNT,
@@ -20,11 +21,46 @@ import { accountId, gameId } from '../src/shared/types';
 import type { AccountId } from '../src/shared/types';
 
 describe('game catalog', () => {
-  test('catalog has Pokeidle with limit 4 and session key', () => {
-    expect(GAMES.map((game) => game.id)).toEqual(['pokeidle']);
-    expect(POKEIDLE.accountLimit).toBe(4);
-    expect(POKEIDLE.sessionKey).toBe('sessao');
-    expect(POKEIDLE.hosts).toEqual(['pokeidle.io']);
+  test('Pokeidle keeps its limit, session key and exact host', () => {
+    expect(knownGameIds()).toEqual(['pokeidle']);
+    expect(POKEIDLE).toMatchObject({
+      accountLimit: 4,
+      sessionKey: 'sessao',
+      hosts: ['pokeidle.io'],
+      domain: null,
+      allowHttp: false,
+      readsSession: true,
+      dot: '#f5c84c',
+    });
+  });
+
+  test('any other site becomes a game without an adapter, reaching its whole domain', () => {
+    const stored = { id: gameId('jogo'), name: 'Jogo', startUrl: 'http://app.jogo.com.br/x' };
+    expect(gameFromStored(stored)).toEqual({
+      ...stored,
+      hosts: ['app.jogo.com.br'],
+      domain: 'jogo.com.br',
+      allowHttp: true,
+      accountLimit: null,
+      sessionKey: null,
+      readsSession: false,
+      dot: null,
+    });
+  });
+
+  test('a known game keeps the name given to it and uses its own address', () => {
+    const game = gameFromStored({ id: gameId('pokeidle'), name: 'Meu jogo', startUrl: 'https://outro.com/' });
+    expect(game.name).toBe('Meu jogo');
+    expect(game.startUrl).toBe('https://pokeidle.io/app');
+    expect(game.hosts).toEqual(['pokeidle.io']);
+  });
+
+  test.each(['pokeidle.io', 'www.pokeidle.io', 'app.pokeidle.io', 'POKEIDLE.IO'])('recognizes %s', (hostname) => {
+    expect(recognizeGame(hostname)?.id).toBe('pokeidle');
+  });
+
+  test.each(['notpokeidle.io', 'pokeidle.io.evil.com', 'pokeidle.com'])('does not recognize %s', (hostname) => {
+    expect(recognizeGame(hostname)).toBeNull();
   });
 
   test('partitionFor combines game and account', () => {
@@ -38,7 +74,7 @@ describe('stored data schema', () => {
   });
 
   test('AppDataSchema rejects unknown version and invalid id', () => {
-    expect(() => AppDataSchema.parse({ ...INITIAL_DATA, version: 2 })).toThrow();
+    expect(() => AppDataSchema.parse({ ...INITIAL_DATA, version: 3 })).toThrow();
     const account = { id: 'A B', gameId: 'pokeidle', name: 'x', enabled: true, muted: true, nick: null };
     expect(() => AppDataSchema.parse({ ...INITIAL_DATA, accounts: [account] })).toThrow();
   });

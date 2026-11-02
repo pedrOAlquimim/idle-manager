@@ -1,6 +1,5 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, Notification, powerMonitor, powerSaveBlocker, shell } from 'electron';
-import { GAMES } from '../games/catalog';
 import { CHANNELS } from '../shared/ipc';
 import { AccountManager } from './account-manager';
 import { registerIpc } from './ipc';
@@ -71,7 +70,6 @@ function start(): void {
   const manager = new AccountManager({
     window,
     repository,
-    games: GAMES,
     // Tests record the notification instead of showing it, so they never pop up on a real desktop.
     notify: (title, body) => {
       if (testing) notifications.push({ title, body });

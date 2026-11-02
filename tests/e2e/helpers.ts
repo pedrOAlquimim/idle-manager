@@ -55,6 +55,7 @@ export const account = (id: string, partial: Partial<StoredAccount> = {}): Store
 
 export const dataWith = (...accounts: StoredAccount[]): AppData => ({
   ...INITIAL_DATA,
+  games: [{ id: gameId('pokeidle'), name: 'PokeIdle', startUrl: 'https://pokeidle.io/app' }],
   accounts,
   preferences: { ...INITIAL_DATA.preferences, selectedId: accounts[0]?.id ?? null },
 });
@@ -77,6 +78,7 @@ export interface DetachedState {
 export interface TestApp {
   app: ElectronApplication;
   dataDir: string;
+  gamePort: number;
   hideWindow(): Promise<void>;
   windowVisible(): Promise<boolean>;
   windowCount(): Promise<number>;
@@ -114,7 +116,7 @@ export interface TestApp {
   close(): Promise<void>;
 }
 
-async function serveFakeGame(): Promise<Server> {
+async function serveFakeGame(port = 0): Promise<Server> {
   const server = createServer((request, response) => {
     if (request.url === '/redirect') {
       response.writeHead(302, { location: 'https://example.com/' });
@@ -130,14 +132,15 @@ async function serveFakeGame(): Promise<Server> {
     response.setHeader('content-type', 'text/html');
     response.end(FAKE_GAME);
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
   return server;
 }
 
-export async function launchApp(options: { data?: AppData } = {}): Promise<TestApp> {
-  const server = await serveFakeGame();
+// `dataDir` reopens a folder the caller owns, and `port` keeps the game's origin, whose storage holds the login.
+export async function launchApp(options: { data?: AppData; dataDir?: string; port?: number } = {}): Promise<TestApp> {
+  const server = await serveFakeGame(options.port);
   const { port } = server.address() as AddressInfo;
-  const dataDir = mkdtempSync(join(tmpdir(), 'idlemanager-e2e-'));
+  const dataDir = options.dataDir ?? mkdtempSync(join(tmpdir(), 'idlemanager-e2e-'));
   if (options.data !== undefined) writeFileSync(join(dataDir, 'data.json'), JSON.stringify(options.data));
 
   const electronBinary = createRequire(import.meta.url)('electron') as unknown as string;
@@ -176,6 +179,7 @@ export async function launchApp(options: { data?: AppData } = {}): Promise<TestA
     view,
     mainProcessErrors: () => errors,
     dataDir,
+    gamePort: port,
     hideWindow: () =>
       app.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0]?.hide();
@@ -397,7 +401,7 @@ export async function launchApp(options: { data?: AppData } = {}): Promise<TestA
       if (pid !== undefined) running.delete(pid);
       server.closeAllConnections();
       server.close();
-      rmSync(dataDir, { recursive: true, force: true });
+      if (options.dataDir === undefined) rmSync(dataDir, { recursive: true, force: true });
     },
   };
   return testApp;

@@ -2,13 +2,13 @@ import { totalmem } from 'node:os';
 import { join } from 'node:path';
 import { app, ipcMain, session, WebContentsView } from 'electron';
 import type { BaseWindow, BrowserWindow, IpcMainEvent, WebContents } from 'electron';
-import { addAccount, registerNick, removeAccount, renameAccount, suggestName } from '../core/accounts';
+import { addAccount, partitionFor, registerNick, removeAccount, renameAccount, suggestName } from '../core/accounts';
 import { accountShortcut, canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../core/policies';
 import type { KeyPress } from '../core/policies';
 import { initialSupervisorState, transition } from '../core/supervisor';
 import { appendEvent, appendSample, totalUsage, usageForProcess } from '../core/usage';
 import type { SupervisorAction, SupervisorEvent, SupervisorState } from '../core/supervisor';
-import { partitionFor } from '../games/catalog';
+import { gameFromStored } from '../games/catalog';
 import { METRICS_INTERVAL_MS, OPEN_INTERVAL_MS } from '../shared/constants';
 import { accountColor, initialsOf } from '../shared/format';
 import { CHANNELS } from '../shared/ipc';
@@ -36,7 +36,6 @@ import type { Repository } from './repository';
 export interface AccountManagerDeps {
   window: BrowserWindow;
   repository: Repository;
-  games: readonly Game[];
   notify(title: string, body: string): void;
   openExternal(url: string): void;
   onChange(view: AppView): void;
@@ -69,7 +68,6 @@ const load = (contents: WebContents, url: string): void => {
 
 export class AccountManager {
   private readonly deps: AccountManagerDeps;
-  private readonly allowHttp = Boolean(process.env.IDLEMANAGER_GAME_URL);
   private readonly slots = new Map<AccountId, Slot>();
   private readonly slotBySender = new Map<number, Slot>();
   private readonly preparedPartitions = new Set<string>();
@@ -185,7 +183,7 @@ export class AccountManager {
 
   view(): AppView {
     const accounts = this.accountViews();
-    const groups = this.deps.games.map((game) => this.groupView(game, accounts));
+    const groups = this.data.games.map((stored) => this.groupView(gameFromStored(stored), accounts));
     return {
       groups,
       accounts,
@@ -244,7 +242,7 @@ export class AccountManager {
   }
 
   private createSlot(account: StoredAccount): Slot | null {
-    const game = this.deps.games.find((candidate) => candidate.id === account.gameId);
+    const game = this.gameOf(account.gameId);
     if (game === undefined) return null;
     const slot: Slot = {
       accountId: account.id,
@@ -384,7 +382,7 @@ export class AccountManager {
   }
 
   private decide(slot: Slot, url: string): ReturnType<typeof decideNavigation> {
-    return decideNavigation(url, slot.game.hosts, this.allowHttp);
+    return decideNavigation(url, slot.game.hosts, slot.game.allowHttp, slot.game.domain);
   }
 
   // One click opens one link: the input is spent here, so a page cannot open several from a single click.
@@ -501,7 +499,7 @@ export class AccountManager {
   }
 
   private add(gameId: Game['id'], name: string): void {
-    const game = this.deps.games.find((candidate) => candidate.id === gameId);
+    const game = this.gameOf(gameId);
     if (game === undefined) return;
     const result = addAccount(this.data, game, name);
     if (!result.ok) return;
@@ -596,8 +594,13 @@ export class AccountManager {
   // The accounts on screen: those of the selected account's game.
   private activeAccounts(): StoredAccount[] {
     const selectedId = this.data.preferences.selectedId;
-    const game = (selectedId === null ? undefined : this.stored(selectedId))?.gameId ?? this.deps.games[0]?.id;
+    const game = (selectedId === null ? undefined : this.stored(selectedId))?.gameId ?? this.data.games[0]?.id;
     return this.data.accounts.filter((account) => account.gameId === game && this.slots.has(account.id));
+  }
+
+  private gameOf(id: GameId): Game | undefined {
+    const stored = this.data.games.find((game) => game.id === id);
+    return stored === undefined ? undefined : gameFromStored(stored);
   }
 
   private stored(id: AccountId): StoredAccount | undefined {

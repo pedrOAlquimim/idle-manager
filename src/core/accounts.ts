@@ -17,6 +17,10 @@ function slugify(name: string): string {
     .replace(/-+$/g, '');
 }
 
+export function partitionFor(game: GameId, account: string): string {
+  return `persist:${game}-${account}`;
+}
+
 export function generateAccountId(name: string, existing: readonly AccountId[]): AccountId {
   const base = slugify(name) || FALLBACK_ID;
   const taken = new Set<string>(existing);
@@ -48,7 +52,7 @@ export function addAccount(
   const trimmed = name.trim();
   if (trimmed === '') return { ok: false, error: 'empty-name' };
   const inGame = accountsForGame(data, game.id);
-  if (inGame.length >= game.accountLimit) return { ok: false, error: 'limit-reached' };
+  if (game.accountLimit !== null && inGame.length >= game.accountLimit) return { ok: false, error: 'limit-reached' };
   if (inGame.some((account) => sameText(account.name, trimmed))) return { ok: false, error: 'duplicate-name' };
 
   const account: StoredAccount = {
@@ -122,7 +126,9 @@ export function registerNick(
 
   const known = data.nicks[game.id] ?? [];
   const alreadyKnown = known.some((entry) => sameText(entry, trimmed));
-  if (!alreadyKnown && known.length >= game.accountLimit) return { data, accepted: false };
+  if (!alreadyKnown && game.accountLimit !== null && known.length >= game.accountLimit) {
+    return { data, accepted: false };
+  }
   if (alreadyKnown && target.nick === trimmed) return { data, accepted: true };
 
   const nicks = alreadyKnown ? data.nicks : { ...data.nicks, [game.id]: [...known, trimmed] };

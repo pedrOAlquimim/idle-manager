@@ -18,15 +18,32 @@ const storedAccountSchema = z.object({
   nick: z.string().nullable(),
 });
 
-const preferencesSchema = z.object({
+const storedGameSchema = z.object({
+  id: gameIdSchema,
+  name: z.string().min(1),
+  startUrl: z.string().refine((url) => URL.canParse(url)),
+});
+
+const preferencesV1Schema = z.object({
   layout: z.enum(['grid', 'focus', 'row']),
   selectedId: accountIdSchema.nullable(),
   sidebarOpen: z.boolean(),
   notifications: z.boolean(),
 });
 
-export const AppDataSchema: z.ZodType<AppData> = z.object({
+const preferencesSchema = preferencesV1Schema.extend({ panelOpen: z.boolean() });
+
+// The file as the first release wrote it: one game, written in the code.
+export const AppDataV1Schema = z.object({
   version: z.literal(1),
+  accounts: z.array(storedAccountSchema),
+  nicks: z.record(z.string(), z.array(z.string())),
+  preferences: preferencesV1Schema,
+});
+
+export const AppDataSchema: z.ZodType<AppData> = z.object({
+  version: z.literal(2),
+  games: z.array(storedGameSchema),
   accounts: z.array(storedAccountSchema),
   nicks: z.record(z.string(), z.array(z.string())),
   preferences: preferencesSchema,
@@ -42,8 +59,9 @@ export const ProbeReadingSchema: z.ZodType<ProbeReading> = z.object({
 });
 
 export const INITIAL_DATA: AppData = {
-  version: 1,
+  version: 2,
+  games: [],
   accounts: [],
   nicks: {},
-  preferences: { layout: 'grid', selectedId: null, sidebarOpen: true, notifications: true },
+  preferences: { layout: 'grid', selectedId: null, sidebarOpen: true, panelOpen: true, notifications: true },
 };

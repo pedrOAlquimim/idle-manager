@@ -2,6 +2,8 @@ import type { ProbeReading } from '../shared/types';
 import type { GameAdapter, ReadableDocument, ReadableStorage } from './adapter';
 
 export const POKEIDLE_ID = 'pokeidle';
+export const POKEIDLE_NAME = 'PokeIdle';
+export const POKEIDLE_URL = 'https://pokeidle.io/app';
 export const POKEIDLE_SESSION_KEY = 'sessao';
 
 const SELECTORS = {

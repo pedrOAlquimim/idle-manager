@@ -103,7 +103,7 @@ describe('startup with unreadable data', () => {
   test('valid JSON of the wrong shape is refused the same way', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'idlemanager-corrupt-'));
     scratch.push(dataDir);
-    writeFileSync(join(dataDir, 'data.json'), JSON.stringify({ ...INITIAL_DATA, version: 2 }));
+    writeFileSync(join(dataDir, 'data.json'), JSON.stringify({ ...INITIAL_DATA, version: 3 }));
     const result = await runApp(dataDir);
     expect(result.code).toBe(1);
   });

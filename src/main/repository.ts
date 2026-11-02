@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { AppDataSchema, INITIAL_DATA } from '../shared/schemas';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { upgradeData } from '../games/migrate';
+import { INITIAL_DATA } from '../shared/schemas';
 import type { AppData } from '../shared/types';
 
 export class Repository {
@@ -14,11 +15,23 @@ export class Repository {
   // the known nicks and switch off the account limit.
   read(): AppData {
     if (!existsSync(this.path)) return structuredClone(INITIAL_DATA);
+    let result: ReturnType<typeof upgradeData>;
     try {
-      return AppDataSchema.parse(JSON.parse(readFileSync(this.path, 'utf8')));
+      result = upgradeData(JSON.parse(readFileSync(this.path, 'utf8')));
     } catch (error) {
       throw new Error(`Invalid data file ${this.path}: ${String(error)}`, { cause: error });
     }
+    if (result.upgraded) {
+      this.keepOriginal();
+      this.write(result.data);
+    }
+    return result.data;
+  }
+
+  // The file as it was before the upgrade, once: a second upgrade must not replace the first copy.
+  private keepOriginal(): void {
+    const copy = join(dirname(this.path), 'data.v1.json');
+    if (!existsSync(copy)) copyFileSync(this.path, copy);
   }
 
   // Written to a temporary file and renamed, so a crash mid-write cannot leave half a file behind.

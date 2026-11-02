@@ -10,13 +10,23 @@ export type AccountStatus =
 
 export interface Rect { x: number; y: number; width: number; height: number }
 
+export interface StoredGame {
+  id: GameId;
+  name: string;
+  startUrl: string;
+}
+
 export interface Game {
   id: GameId;
   name: string;
   startUrl: string;
   hosts: readonly string[];
-  accountLimit: number;
+  domain: string | null;
+  allowHttp: boolean;
+  accountLimit: number | null;
   sessionKey: string | null;
+  readsSession: boolean;
+  dot: string | null;
 }
 
 export interface StoredAccount {
@@ -32,11 +42,13 @@ export interface Preferences {
   layout: Layout;
   selectedId: AccountId | null;
   sidebarOpen: boolean;
+  panelOpen: boolean;
   notifications: boolean;
 }
 
 export interface AppData {
-  version: 1;
+  version: 2;
+  games: StoredGame[];
   accounts: StoredAccount[];
   nicks: Record<string, string[]>;
   preferences: Preferences;
@@ -77,7 +89,7 @@ export interface AccountView {
 export interface GroupView {
   gameId: GameId;
   name: string;
-  limit: number;
+  limit: number | null;
   suggestedName: string;
   accountIds: AccountId[];
   enabledCount: number;

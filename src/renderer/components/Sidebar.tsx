@@ -10,7 +10,7 @@ interface SidebarProps {
   onAddAccount: (game: GameId | null) => void;
 }
 
-const isAtLimit = (group: GroupView): boolean => group.accountIds.length >= group.limit;
+const isAtLimit = (group: GroupView): boolean => group.limit !== null && group.accountIds.length >= group.limit;
 
 function AddAccountForm({ group, accounts, onClose }: { group: GroupView; accounts: readonly AccountView[]; onClose: () => void }) {
   const [name, setName] = useState(group.suggestedName);

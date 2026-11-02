@@ -18,9 +18,15 @@ const OTHER_GAME: Game = {
   name: 'Other',
   startUrl: 'https://example.com/',
   hosts: ['example.com'],
+  domain: 'example.com',
+  allowHttp: false,
   accountLimit: 2,
   sessionKey: null,
+  readsSession: false,
+  dot: null,
 };
+
+const UNLIMITED_GAME: Game = { ...OTHER_GAME, id: gameId('unlimited'), accountLimit: null };
 
 // Every fixture is deep-frozen: a rule that mutates its input throws instead of passing silently.
 function deepFreeze<T>(value: T): T {
@@ -61,6 +67,14 @@ function register(data: AppData, id: AccountId, nick: string, game: Game = POKEI
 function nickOf(data: AppData, id: AccountId): string | null | undefined {
   return data.accounts.find((account) => account.id === id)?.nick;
 }
+
+describe('a game without a limit', () => {
+  test('takes more accounts than any limit', () => {
+    let data = emptyData();
+    for (const name of ['a', 'b', 'c', 'd', 'e', 'f']) data = unwrap(addAccount(data, UNLIMITED_GAME, name)).data;
+    expect(data.accounts).toHaveLength(6);
+  });
+});
 
 describe('generateAccountId', () => {
   test('generateAccountId strips accents and avoids duplicates', () => {
