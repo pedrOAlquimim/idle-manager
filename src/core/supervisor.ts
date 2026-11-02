@@ -20,7 +20,9 @@ export type SupervisorEvent =
       type: 'enable' | 'disable' | 'block' | 'load-started' | 'load-failed' | 'crash' | 'hung'
         | 'recovered' | 'tick' | 'resumed' | 'retry';
       now: number;
-    };
+    }
+  // The game's first page sent the account to another site: the app does not follow it.
+  | { type: 'left-site'; host: string; now: number };
 
 // `title` is the headline of the notification. `body` is extra detail only: the game's own notice
 // title for notices, empty otherwise. The account manager adds the account name when it shows it.
@@ -37,7 +39,10 @@ const MESSAGES = {
   gaveUp: `Não voltou depois de ${RELOAD_DELAYS_MS.length} tentativas`,
   blocked: '5º nick bloqueado',
   gameNotice: 'Aviso do jogo',
+  leftSiteTitle: 'Jogo levou para outro site',
 } as const;
+
+const leftSiteMessage = (host: string): string => `Esse jogo levou para ${host}. Crie o grupo com esse endereço.`;
 
 export function initialSupervisorState(): SupervisorState {
   return {
@@ -240,6 +245,20 @@ export function transition(state: SupervisorState, event: SupervisorEvent): Supe
         lastProbeAt: event.now,
         gameMissingSince: state.gameMissingSince === null ? null : event.now,
       });
+    case 'left-site': {
+      if (isParked(state.status)) return stay(state);
+      // Down without retries: reloading would end up in the same place.
+      const parked: SupervisorState = {
+        ...state,
+        status: 'down',
+        message: leftSiteMessage(event.host),
+        nextReloadAt: null,
+        gameMissingSince: null,
+        connectedSince: null,
+        hung: false,
+      };
+      return { state: parked, actions: [notification(MESSAGES.leftSiteTitle, event.host)] };
+    }
     case 'retry':
       if (state.status !== 'down') return stay(state);
       return {

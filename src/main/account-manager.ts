@@ -56,6 +56,7 @@ interface Slot {
   cpu: number[];
   history: HistoryEvent[];
   detached: BaseWindow | null;
+  pageLoaded: boolean;
 }
 
 const TICK_MS = 1000;
@@ -274,6 +275,7 @@ export class AccountManager {
       cpu: [],
       history: [],
       detached: null,
+      pageLoaded: false,
     };
     this.slots.set(account.id, slot);
     return slot;
@@ -355,7 +357,7 @@ export class AccountManager {
   }
 
   private watchPage(slot: Slot, contents: WebContents): void {
-    const report = (type: Exclude<SupervisorEvent['type'], 'probe'>): void => {
+    const report = (type: Exclude<SupervisorEvent['type'], 'probe' | 'left-site'>): void => {
       if (slot.view?.webContents === contents) this.feed(slot, { type, now: Date.now() });
     };
     const noteInput = (): void => {
@@ -369,7 +371,15 @@ export class AccountManager {
       if (isMainFrame && code !== -3) report('load-failed');
     });
     contents.on('did-start-navigation', (details) => {
-      if (details.isMainFrame && !details.isSameDocument) report('load-started');
+      if (!details.isMainFrame || details.isSameDocument) return;
+      // A load the app started (open, reload, back to the start) has no initiator. A navigation the page
+      // asked for does, and it must not make a page that already loaded look new: its start event comes
+      // before will-navigate, where the exit is judged.
+      if (details.initiator == null) slot.pageLoaded = false;
+      report('load-started');
+    });
+    contents.on('did-finish-load', () => {
+      slot.pageLoaded = true;
     });
     contents.on('did-navigate', (_event, url) => {
       slot.host = URL.canParse(url) ? new URL(url).hostname : slot.host;
@@ -391,9 +401,11 @@ export class AccountManager {
       return { action: 'deny' };
     });
     const keepInside = (event: { url: string; isMainFrame: boolean; preventDefault(): void }): void => {
-      if (!event.isMainFrame || this.decide(slot, event.url) === 'inside') return;
+      const decision = this.decide(slot, event.url);
+      if (!event.isMainFrame || decision === 'inside') return;
       event.preventDefault();
-      this.leaveToBrowser(slot, event.url);
+      if (this.leaveToBrowser(slot, event.url) || decision !== 'external' || slot.game.readsSession) return;
+      this.noteBlockedExit(slot, event.url);
     };
     contents.on('will-navigate', keepInside);
     contents.on('will-redirect', keepInside);
@@ -404,10 +416,20 @@ export class AccountManager {
   }
 
   // One click opens one link: the input is spent here, so a page cannot open several from a single click.
-  private leaveToBrowser(slot: Slot, url: string): void {
-    if (this.decide(slot, url) === 'block' || !canOpenExternal(slot.lastInputAt, Date.now())) return;
+  // Returns whether the link was opened.
+  private leaveToBrowser(slot: Slot, url: string): boolean {
+    if (this.decide(slot, url) === 'block' || !canOpenExternal(slot.lastInputAt, Date.now())) return false;
     slot.lastInputAt = null;
     this.deps.openExternal(url);
+    return true;
+  }
+
+  // A game the app cannot read has no login screen to explain a blank page: if its first page is sent to
+  // another site the account says so, and a page that already loaded keeps running with a note.
+  private noteBlockedExit(slot: Slot, url: string): void {
+    const host = URL.canParse(url) ? new URL(url).hostname : url;
+    if (slot.pageLoaded) this.record(slot, `Saída para ${host} bloqueada`);
+    else this.feed(slot, { type: 'left-site', host, now: Date.now() });
   }
 
   private handleReading(slot: Slot, reading: ProbeReading): void {
@@ -449,7 +471,7 @@ export class AccountManager {
     for (const slot of this.slots.values()) this.feed(slot, { type: 'tick', now });
   }
 
-  private feedAccount(id: AccountId, type: Exclude<SupervisorEvent['type'], 'probe'>): void {
+  private feedAccount(id: AccountId, type: Exclude<SupervisorEvent['type'], 'probe' | 'left-site'>): void {
     const slot = this.slots.get(id);
     if (slot !== undefined) this.feed(slot, { type, now: Date.now() });
   }

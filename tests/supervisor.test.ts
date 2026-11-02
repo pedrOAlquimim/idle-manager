@@ -17,7 +17,8 @@ const reading = (partial: Partial<ProbeReading> = {}): ProbeReading => ({
   ...partial,
 });
 
-const ev = (type: Exclude<SupervisorEvent['type'], 'probe'>, now: number): SupervisorEvent => ({ type, now });
+const ev = (type: Exclude<SupervisorEvent['type'], 'probe' | 'left-site'>, now: number): SupervisorEvent => ({ type, now });
+const leftSite = (host: string, now: number): SupervisorEvent => ({ type: 'left-site', host, now });
 const probe = (now: number, partial: Partial<ProbeReading> = {}): SupervisorEvent => ({
   type: 'probe',
   reading: reading(partial),
@@ -332,6 +333,36 @@ describe('retry and block', () => {
     const retried = transition(down.state, ev('retry', down.at + 1000));
     expect(retried.actions).toEqual([{ type: 'reload' }]);
     expect(retried.state).toMatchObject({ status: 'loading', attempts: 0, message: null, nextReloadAt: null });
+  });
+
+  test('left-site parks the account as down, with the host in the message', () => {
+    const left = transition(loading(0), leftSite('outro.com', 100));
+    expect(left.state).toMatchObject({
+      status: 'down',
+      message: 'Esse jogo levou para outro.com. Crie o grupo com esse endereço.',
+      attempts: 0,
+      nextReloadAt: null,
+      connectedSince: null,
+    });
+    expect(left.actions).toEqual([notify('Jogo levou para outro site', 'outro.com')]);
+  });
+
+  test('left-site cancels a reload that was waiting', () => {
+    const waiting = apply(connected(0), [ev('crash', 0)]).state;
+    expect(waiting.nextReloadAt).not.toBeNull();
+    expect(transition(waiting, leftSite('outro.com', 100)).state).toMatchObject({ status: 'down', nextReloadAt: null });
+  });
+
+  test.each(['off', 'blocked', 'down'] as const)('left-site does nothing to a parked account (%s)', (status) => {
+    const state: SupervisorState = { ...initialSupervisorState(), status, message: 'x' };
+    expect(transition(state, leftSite('outro.com', 100))).toEqual({ state, actions: [] });
+  });
+
+  test('retry after left-site loads the page again', () => {
+    const left = transition(loading(0), leftSite('outro.com', 100)).state;
+    const retried = transition(left, ev('retry', 200));
+    expect(retried.actions).toEqual([{ type: 'reload' }]);
+    expect(retried.state).toMatchObject({ status: 'loading', attempts: 0, message: null });
   });
 
   test('retry outside down does nothing', () => {

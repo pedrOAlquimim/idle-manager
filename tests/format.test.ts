@@ -128,7 +128,8 @@ describe('statusText', () => {
       ['notice', { message: 'Rede cheia' }, 'Rede cheia'],
       ['notice', {}, 'aviso do jogo'],
       ['reloading', { attempts: 2 }, 'recarregando (2/3)'],
-      ['down', { message: 'Não voltou depois de 3 tentativas' }, 'não voltou depois de 3 tentativas'],
+      ['down', { attempts: 3, message: 'Não voltou depois de 3 tentativas' }, 'não voltou depois de 3 tentativas'],
+      ['down', { attempts: 0, message: 'Esse jogo levou para outro.com. Crie o grupo com esse endereço.' }, 'saiu para outro site'],
       ['blocked', { message: '5º nick bloqueado' }, '5º nick bloqueado'],
     ];
     for (const [status, extra, expected] of cases) {

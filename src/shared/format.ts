@@ -65,7 +65,10 @@ export function statusText(account: AccountView, now: number): string {
     case 'reloading':
       return `recarregando (${account.attempts}/${RELOAD_DELAYS_MS.length})`;
     case 'down':
-      return `não voltou depois de ${RELOAD_DELAYS_MS.length} tentativas`;
+      // Without attempts the account did not fail to load: its game sent it to another site.
+      return account.attempts >= RELOAD_DELAYS_MS.length
+        ? `não voltou depois de ${RELOAD_DELAYS_MS.length} tentativas`
+        : 'saiu para outro site';
     case 'blocked':
       return '5º nick bloqueado';
     default: {

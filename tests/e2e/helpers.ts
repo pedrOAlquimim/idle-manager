@@ -83,9 +83,19 @@ export interface OtherSite {
 
 // A second site, on its own loopback address: the app must take it for another host.
 export async function serveOtherSite(): Promise<OtherSite> {
-  const server = createServer((_request, response) => {
+  const server = createServer((request, response) => {
+    // Another loopback address: to the app it is another site, and nothing is ever fetched from it.
+    if (request.url === '/redirect-away') {
+      response.writeHead(302, { location: 'http://127.0.0.3:9/' });
+      response.end();
+      return;
+    }
     response.setHeader('content-type', 'text/html');
-    response.end('<!doctype html><title>Outro jogo</title><h1>Outro jogo</h1>');
+    response.end(
+      '<!doctype html><title>Outro jogo</title><h1>Outro jogo</h1>' +
+        '<a href="http://127.0.0.3:9/link" target="_blank" style="position:fixed;top:0;left:0;width:300px;height:150px">fora</a>' +
+        '<a href="http://127.0.0.3:9/same-tab" style="position:fixed;top:160px;left:0;width:300px;height:150px">mesma aba</a>',
+    );
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.2', resolve));
   const { port } = server.address() as AddressInfo;

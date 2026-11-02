@@ -71,6 +71,63 @@ describe('a group of another site', () => {
     expect(await app.hasPage('principal')).toBe(true);
   });
 
+  test('a site that redirects away shows the warning instead of hanging', async () => {
+    const { app, page, other } = await start();
+    await app.createGame({ name: 'Outro', url: `${other.url}redirect-away`, accountName: 'Principal' });
+    await app.waitForStatus('principal', 'down', 15000);
+
+    const tile = page.locator('[data-account="principal"]');
+    await tile.getByText('Esse jogo levou para 127.0.0.3. Crie o grupo com esse endereço.').waitFor();
+    await tile.getByRole('button', { name: 'Tentar de novo' }).waitFor();
+    await tile.getByText('saiu para outro site').waitFor();
+    expect(await app.openedUrls()).toEqual([]);
+    expect((await app.accountView('principal')).attempts).toBe(0);
+  });
+
+  test('a site that leaves after loading keeps running and records it', async () => {
+    const { app, other } = await start();
+    await app.createGame(group(other));
+    await app.waitForStatus('principal', 'connected', 15000);
+    await app.inPage('principal', `location.href = 'http://127.0.0.3:9/'; null`);
+    await app.waitFor(
+      async () =>
+        (await app.accountView('principal')).history.some((event) => event.text === 'Saída para 127.0.0.3 bloqueada'),
+      5000,
+    );
+    // The cancelled navigation shows as loading until the next probe finds the page as it was.
+    await app.waitForStatus('principal', 'connected', 8000);
+    expect(await app.openedUrls()).toEqual([]);
+  });
+
+  test('a click on a link to another site opens it in the browser', async () => {
+    const { app, other } = await start();
+    await app.createGame(group(other));
+    await app.waitForStatus('principal', 'connected', 15000);
+    await app.clickAt('principal', 50, 50);
+    await app.waitFor(async () => (await app.openedUrls()).length > 0, 5000);
+    expect(await app.openedUrls()).toEqual(['http://127.0.0.3:9/link']);
+  });
+
+  test('a click on a link in the same tab opens the other site in the browser and leaves the page', async () => {
+    const { app, other } = await start();
+    await app.createGame(group(other));
+    await app.waitForStatus('principal', 'connected', 15000);
+    await app.clickAt('principal', 50, 200);
+    await app.waitFor(async () => (await app.openedUrls()).length > 0, 5000);
+    expect(await app.openedUrls()).toEqual(['http://127.0.0.3:9/same-tab']);
+    expect(await app.inPage('principal', 'location.hostname')).toBe('127.0.0.2');
+  });
+
+  test('a game the app can read gets no warning for an exit it cancelled', async () => {
+    const { app } = await start(account('a'));
+    await app.waitForStatus('a', 'login');
+    await app.inPage('a', `location.href = 'http://127.0.0.3:9/'; null`);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const view = await app.accountView('a');
+    expect(view.history.filter((event) => event.text.startsWith('Saída'))).toEqual([]);
+    expect(view.status).not.toBe('down');
+  });
+
   test('keeps its own http pages inside the account', async () => {
     const { app, other } = await start();
     await app.createGame(group(other));
