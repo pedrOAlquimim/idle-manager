@@ -6,7 +6,7 @@ Fontes: [design do Claude Design](https://claude.ai/artifact/3UXTBvUVXEppS29xHT9
 
 ## Objetivo
 
-App desktop pessoal para rodar jogos de navegador com várias contas, em sessões isoladas, numa janela só. A v1 traz só o Pokeidle, com até 4 contas, e a estrutura fica pronta para outros jogos. O app mostra e vigia os jogos. Ele não joga por você.
+App desktop pessoal para rodar jogos de navegador com várias contas, em sessões isoladas, numa janela só. A v1 nasceu só com o Pokeidle, com até 4 contas; jogos de qualquer site entram como grupos, como descreve o [design de 2026-11-02](2026-11-02-game-groups-design.md). O app mostra e vigia os jogos. Ele não joga por você.
 
 ## Regras do Pokeidle que o app respeita
 
@@ -24,7 +24,7 @@ O app não tem bot, proxy nem disfarce de identificador, e mantém o user agent 
 | Tema | Decisão |
 |---|---|
 | Público | Só o Pedro. Sem site, conta ou servidor. |
-| Jogos | Catálogo no código. A v1 só tem o Pokeidle, mostrado como "PokeIdle". |
+| Jogos | Grupos criados pelo usuário, com nome e URL. O Pokeidle é reconhecido pelo endereço e mostrado como "PokeIdle". Ver o [design de 2026-11-02](2026-11-02-game-groups-design.md). |
 | Sistemas | Só Linux na v1 (`.deb`). |
 | Base | Electron 45, TypeScript estrito, React 19 na interface. |
 | Idioma | Código, tipos, arquivos, testes e commits em inglês. Textos da interface em português. |
@@ -186,7 +186,7 @@ O combate roda no servidor, por WebSocket, e o jogo se reconecta sozinho. O app 
 
 ## Fora da v1
 
-Versão para Windows, outros jogos no catálogo, tela para adicionar jogos, perfis, cofre de senhas, alertas por Discord ou Telegram, monitor de textos, login com Google, extensão oficial do jogo, atualização automática, início com o sistema e histórico salvo em disco.
+Versão para Windows, perfis, cofre de senhas, alertas por Discord ou Telegram, monitor de textos, login com Google, extensão oficial do jogo, atualização automática, início com o sistema e histórico salvo em disco.
 
 ## Critério de pronto
 
