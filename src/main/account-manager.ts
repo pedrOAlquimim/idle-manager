@@ -166,6 +166,9 @@ export class AccountManager {
       case 'toggle-sidebar':
         this.updatePreferences({ sidebarOpen: !this.data.preferences.sidebarOpen });
         return;
+      case 'toggle-panel':
+        this.updatePreferences({ panelOpen: !this.data.preferences.panelOpen });
+        return;
       case 'screens':
         this.screens = new Map(command.screens.map((screen) => [screen.accountId, screen]));
         this.applyScreens();

@@ -53,16 +53,26 @@ export function App() {
       <div className="body">
         {view.preferences.sidebarOpen && <Sidebar view={view} onNewGame={openNewGame} onAddAccount={openAddAccount} />}
         <ScreenGrid view={view} onNewGame={openNewGame} onAddAccount={openAddAccount} />
-        <aside className="panel" aria-label="Detalhes da conta">
-          {activePanel === 'history' && <HistoryPanel view={view} onBack={() => setActivePanel('account')} />}
-          {activePanel === 'settings' && <SettingsPanel view={view} onBack={() => setActivePanel('account')} />}
-          {activePanel === 'account' && <AccountPanel view={view} renamingId={renamingId} onRenameDone={stopRenaming} />}
-        </aside>
+        {view.preferences.panelOpen && (
+          <aside className="panel" aria-label="Detalhes da conta">
+            {activePanel === 'history' && <HistoryPanel view={view} onBack={() => setActivePanel('account')} />}
+            {activePanel === 'settings' && <SettingsPanel view={view} onBack={() => setActivePanel('account')} />}
+            {activePanel === 'account' && <AccountPanel view={view} renamingId={renamingId} onRenameDone={stopRenaming} />}
+          </aside>
+        )}
       </div>
       <StatusBar
         view={view}
         activePanel={activePanel}
-        onOpenPanel={(panel) => setActivePanel((current) => (current === panel ? 'account' : panel))}
+        onOpenPanel={(panel) => {
+          // With the panel closed the button opens it on that panel, instead of toggling back to the account.
+          if (!view.preferences.panelOpen) {
+            window.idleManager.send({ type: 'toggle-panel' });
+            setActivePanel(panel);
+          } else {
+            setActivePanel((current) => (current === panel ? 'account' : panel));
+          }
+        }}
       />
       {modal?.kind === 'new-game' && <NewGameModal onClose={closeModal} />}
       {addingTo !== undefined && <AddAccountModal group={addingTo} accounts={view.accounts} onClose={closeModal} />}

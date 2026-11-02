@@ -37,6 +37,8 @@ svg { flex: none; }
 
 /* grid */
 .main { flex: 1; min-width: 0; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.main-top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.main-top .r { margin-left: auto; }
 .show-side { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid #262a38; background: var(--card); color: var(--muted); }
 .grid { flex: 1; min-height: 0; display: grid; gap: 8px; }
 .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--fg-2); }

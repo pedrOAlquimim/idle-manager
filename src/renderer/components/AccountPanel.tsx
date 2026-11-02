@@ -4,7 +4,7 @@ import { isScreenHidden } from '../../core/policies';
 import { EVENTS_IN_PANEL } from '../../shared/constants';
 import { formatNumber, formatTime, statusColor, statusText } from '../../shared/format';
 import type { AccountView, AppView } from '../../shared/types';
-import { FocusIcon, HomeIcon, MoreIcon, MuteIcon, NextIcon, PopIcon, PowerIcon, ReloadIcon, SoundIcon } from './Icons';
+import { CollapsePanelIcon, FocusIcon, HomeIcon, MoreIcon, MuteIcon, NextIcon, PopIcon, PowerIcon, ReloadIcon, SoundIcon } from './Icons';
 import { Sparkline } from './Sparkline';
 
 interface AccountPanelProps {
@@ -97,6 +97,14 @@ export function AccountPanel({ view, renamingId, onRenameDone }: AccountPanelPro
           onClick={() => next !== undefined && send({ type: 'select', accountId: next.id })}
         >
           <NextIcon />
+        </button>
+        <button
+          className="ib"
+          type="button"
+          aria-label="Recolher painel da conta"
+          onClick={() => send({ type: 'toggle-panel' })}
+        >
+          <CollapsePanelIcon />
         </button>
       </div>
 

@@ -1,7 +1,7 @@
 import { gridShape } from '../../core/policies';
 import type { AppView, GameId } from '../../shared/types';
 import { useMeasureScreens } from '../hooks/useMeasureScreens';
-import { ExpandSidebarIcon } from './Icons';
+import { ExpandPanelIcon, ExpandSidebarIcon } from './Icons';
 import { Screen } from './Screen';
 
 interface ScreenGridProps {
@@ -12,7 +12,7 @@ interface ScreenGridProps {
 
 export function ScreenGrid({ view, onNewGame, onAddAccount }: ScreenGridProps) {
   const gameArea = useMeasureScreens();
-  const { layout, selectedId, sidebarOpen } = view.preferences;
+  const { layout, selectedId, sidebarOpen, panelOpen } = view.preferences;
 
   const selected = view.accounts.find((account) => account.id === selectedId) ?? view.accounts[0];
   const group = view.groups.find((candidate) => candidate.gameId === selected?.gameId) ?? view.groups[0];
@@ -23,10 +23,19 @@ export function ScreenGrid({ view, onNewGame, onAddAccount }: ScreenGridProps) {
 
   return (
     <main className="main">
-      {!sidebarOpen && (
-        <button className="show-side" type="button" onClick={() => window.idleManager.send({ type: 'toggle-sidebar' })}>
-          <ExpandSidebarIcon /> Mostrar contas
-        </button>
+      {(!sidebarOpen || !panelOpen) && (
+        <div className="main-top">
+          {!sidebarOpen && (
+            <button className="show-side" type="button" onClick={() => window.idleManager.send({ type: 'toggle-sidebar' })}>
+              <ExpandSidebarIcon /> Mostrar contas
+            </button>
+          )}
+          {!panelOpen && (
+            <button className="show-side r" type="button" onClick={() => window.idleManager.send({ type: 'toggle-panel' })}>
+              <ExpandPanelIcon /> Mostrar painel
+            </button>
+          )}
+        </div>
       )}
       {screens.length === 0 ? (
         <div className="empty">

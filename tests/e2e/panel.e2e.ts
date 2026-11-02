@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Locator, Page } from 'playwright-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import { accountId } from '../../src/shared/types';
@@ -223,5 +226,74 @@ describe('turning a whole group on and off', () => {
       expect(await app.hasPage(id)).toBe(false);
     }
     expect(app.storedData().accounts.map((stored) => stored.enabled)).toEqual([false, false, false]);
+  });
+});
+
+describe('collapsing the panel', () => {
+  const widthOf = async (app: TestApp, id: string): Promise<number> => (await app.viewBounds(id))?.bounds.width ?? 0;
+
+  test('widens the views and takes the panel away', async () => {
+    const { app, page, panel } = await start(account('a'));
+    await app.waitForStatus('a', 'login');
+    await app.waitFor(async () => (await widthOf(app, 'a')) > 0, 3000);
+    const before = await widthOf(app, 'a');
+
+    await panel.getByRole('button', { name: 'Recolher painel da conta' }).click();
+    await panel.waitFor({ state: 'detached' });
+    await app.waitFor(async () => (await widthOf(app, 'a')) > before, 3000);
+    expect((await app.view()).preferences.panelOpen).toBe(false);
+    await page.getByRole('button', { name: 'Mostrar painel' }).waitFor();
+  });
+
+  test('Mostrar painel brings it back, and the choice survives a restart', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'idlemanager-panel-'));
+    try {
+      const first = await launchApp({ data: dataWith(account('a')), dataDir });
+      running = first;
+      const firstPage = await first.ui();
+      await firstPage.getByRole('button', { name: 'Recolher painel da conta' }).click();
+      await first.waitFor(async () => !(await first.view()).preferences.panelOpen, 3000);
+      await first.quitApp();
+      expect(await first.exited(8000)).toBe(true);
+      await first.close();
+
+      const second = await launchApp({ dataDir });
+      running = second;
+      const page = await second.ui();
+      await page.getByRole('button', { name: 'Mostrar painel' }).waitFor();
+      expect(await page.getByRole('complementary', { name: 'Detalhes da conta' }).count()).toBe(0);
+
+      await page.getByRole('button', { name: 'Mostrar painel' }).click();
+      await page.getByRole('complementary', { name: 'Detalhes da conta' }).waitFor();
+      expect(second.storedData().preferences.panelOpen).toBe(true);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  test('with both sides closed the two buttons are shown', async () => {
+    const { app, page, panel } = await start(account('a'));
+    await app.execute({ type: 'toggle-sidebar' });
+    await panel.getByRole('button', { name: 'Recolher painel da conta' }).click();
+    await page.getByRole('button', { name: 'Mostrar contas' }).waitFor();
+    await page.getByRole('button', { name: 'Mostrar painel' }).waitFor();
+    const [left, right] = await Promise.all([
+      page.getByRole('button', { name: 'Mostrar contas' }).boundingBox(),
+      page.getByRole('button', { name: 'Mostrar painel' }).boundingBox(),
+    ]);
+    expect((left?.x ?? 1e9) < (right?.x ?? 0)).toBe(true);
+  });
+
+  test('opening Histórico with the panel closed opens it on the history', async () => {
+    const { app, page } = await start(account('a'));
+    await app.execute({ type: 'toggle-panel' });
+    await page.getByRole('button', { name: 'Mostrar painel' }).waitFor();
+
+    await page.getByRole('button', { name: 'Histórico' }).click();
+    const panel = page.getByRole('complementary', { name: 'Detalhes da conta' });
+    await panel.waitFor();
+    await panel.getByRole('button', { name: 'Voltar' }).waitFor();
+    await panel.getByText('HISTÓRICO DESTA CONTA').or(panel.getByText('Nada por enquanto.')).first().waitFor();
+    expect((await app.view()).preferences.panelOpen).toBe(true);
   });
 });

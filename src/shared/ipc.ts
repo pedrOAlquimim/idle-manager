@@ -20,7 +20,7 @@ export type ManagerCommand =
   | { type: 'rename-account'; accountId: AccountId; name: string }
   | { type: 'set-layout'; layout: Layout }
   | { type: 'toggle-focus'; accountId: AccountId }
-  | { type: 'toggle-sidebar' | 'leave-focus' }
+  | { type: 'toggle-sidebar' | 'toggle-panel' | 'leave-focus' }
   | { type: 'set-notifications'; enabled: boolean }
   | { type: 'set-modal-open'; open: boolean }
   | { type: 'screens'; screens: MeasuredScreen[] };
