@@ -109,10 +109,10 @@ describe('history', () => {
     }
   });
 
-  test('adding an account records that it was turned on', async () => {
+  test('adding an account records it', async () => {
     const app = await start(account('a'));
     await app.execute({ type: 'add-account', gameId: (await app.view()).groups[0]?.gameId ?? ('' as never), name: 'Alt 1' });
     const added = (await app.view()).accounts.find((candidate) => candidate.name === 'Alt 1');
-    expect(added?.history.map((event) => event.text)).toEqual(['Ligada']);
+    expect(added?.history.map((event) => event.text)).toEqual(['Conta adicionada']);
   });
 });

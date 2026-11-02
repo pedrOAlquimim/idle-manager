@@ -1,10 +1,11 @@
-import { accountId } from '../shared/types';
+import { accountId, gameId } from '../shared/types';
 import type { AccountId, AppData, Game, GameId, Result, StoredAccount } from '../shared/types';
 
 const MAX_ID_LENGTH = 40;
 const FALLBACK_ID = 'conta';
+const FALLBACK_GAME_ID = 'jogo';
 
-const sameText = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
+export const sameText = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 function slugify(name: string): string {
   return name
@@ -21,15 +22,26 @@ export function partitionFor(game: GameId, account: string): string {
   return `persist:${game}-${account}`;
 }
 
-export function generateAccountId(name: string, existing: readonly AccountId[]): AccountId {
-  const base = slugify(name) || FALLBACK_ID;
-  const taken = new Set<string>(existing);
-  if (!taken.has(base)) return accountId(base);
+function uniqueId(base: string, isTaken: (candidate: string) => boolean): string {
+  if (!isTaken(base)) return base;
   for (let n = 2; ; n += 1) {
     const suffix = `-${n}`;
     const candidate = `${base.slice(0, MAX_ID_LENGTH - suffix.length)}${suffix}`;
-    if (!taken.has(candidate)) return accountId(candidate);
+    if (!isTaken(candidate)) return candidate;
   }
+}
+
+export function generateAccountId(
+  name: string,
+  existing: readonly AccountId[],
+  clashes: (candidate: string) => boolean = () => false,
+): AccountId {
+  const taken = new Set<string>(existing);
+  return accountId(uniqueId(slugify(name) || FALLBACK_ID, (candidate) => taken.has(candidate) || clashes(candidate)));
+}
+
+export function generateGameId(name: string, taken: readonly string[]): GameId {
+  return gameId(uniqueId(slugify(name) || FALLBACK_GAME_ID, (candidate) => taken.includes(candidate)));
 }
 
 export function accountsForGame(data: AppData, game: GameId): StoredAccount[] {
@@ -55,8 +67,15 @@ export function addAccount(
   if (game.accountLimit !== null && inGame.length >= game.accountLimit) return { ok: false, error: 'limit-reached' };
   if (inGame.some((account) => sameText(account.name, trimmed))) return { ok: false, error: 'duplicate-name' };
 
+  // Ids hold letters, digits and hyphens, so game `a` with account `b-c` and game `a-b` with account `c`
+  // would land in one partition, and with it one login.
+  const partitions = new Set(data.accounts.map((existing) => partitionFor(existing.gameId, existing.id)));
   const account: StoredAccount = {
-    id: generateAccountId(trimmed, data.accounts.map((existing) => existing.id)),
+    id: generateAccountId(
+      trimmed,
+      data.accounts.map((existing) => existing.id),
+      (candidate) => partitions.has(partitionFor(game.id, candidate)),
+    ),
     gameId: game.id,
     name: trimmed,
     enabled: true,

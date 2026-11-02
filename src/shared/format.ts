@@ -39,6 +39,12 @@ export function accountColor(index: number): AccountColor {
   return PALETTE[slot] ?? PRINCIPAL_COLOR;
 }
 
+const GROUP_COLORS = ['#a78bfa', '#22d3ee', '#f472b6', '#34d399', '#fb923c', '#60a5fa'] as const;
+
+export function groupColor(position: number): string {
+  return GROUP_COLORS[position % GROUP_COLORS.length] ?? GROUP_COLORS[0];
+}
+
 // `down` and `blocked` use the spec's fixed copy: the supervisor's message for them is the notification
 // headline, which is capitalised for a title and not for a status line.
 export function statusText(account: AccountView, now: number): string {
@@ -49,10 +55,11 @@ export function statusText(account: AccountView, now: number): string {
       return 'carregando';
     case 'login':
       return account.message ?? 'aguardando login';
-    case 'connected':
-      return account.enabledSince === null
-        ? 'conectada'
-        : `conectada · ligada há ${formatDuration(now - account.enabledSince)}`;
+    case 'connected': {
+      // Without an adapter the app knows the page is up, not whether anyone is logged in.
+      const word = account.readsSession ? 'conectada' : 'aberta';
+      return account.enabledSince === null ? word : `${word} · ligada há ${formatDuration(now - account.enabledSince)}`;
+    }
     case 'notice':
       return account.message ?? 'aviso do jogo';
     case 'reloading':

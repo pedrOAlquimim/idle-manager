@@ -8,6 +8,7 @@ import {
   initialsOf,
   statusColor,
   statusText,
+  groupColor,
 } from '../src/shared/format';
 import { accountId, gameId } from '../src/shared/types';
 import type { AccountStatus, AccountView } from '../src/shared/types';
@@ -22,6 +23,7 @@ const view = (partial: Partial<AccountView> = {}): AccountView => ({
   message: null,
   attempts: 0,
   enabledSince: 0,
+  readsSession: true,
   muted: true,
   detached: false,
   host: 'pokeidle.io',
@@ -98,7 +100,19 @@ describe('accountColor', () => {
   });
 });
 
+describe('groupColor', () => {
+  test('walks the sequence of the design and starts over', () => {
+    expect([0, 1, 2, 3, 4, 5].map(groupColor)).toEqual(['#a78bfa', '#22d3ee', '#f472b6', '#34d399', '#fb923c', '#60a5fa']);
+    expect(groupColor(6)).toBe('#a78bfa');
+  });
+});
+
 describe('statusText', () => {
+  test('a game that cannot tell if the account is logged in says aberta', () => {
+    expect(statusText(view({ status: 'connected', readsSession: false, enabledSince: null }), 10_000)).toBe('aberta');
+    expect(statusText(view({ status: 'connected', readsSession: false, enabledSince: 0 }), 300_000)).toBe('aberta · ligada há 5 min');
+  });
+
   test('connected shows how long the account has been enabled', () => {
     expect(statusText(view({ status: 'connected', enabledSince: 4_000 }), 14_000)).toBe('conectada · ligada há 10 s');
     expect(statusText(view({ status: 'connected', enabledSince: 0 }), 3_900_000)).toBe('conectada · ligada há 1 h 5 min');

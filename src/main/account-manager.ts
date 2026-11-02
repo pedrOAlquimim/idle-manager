@@ -9,8 +9,9 @@ import { initialSupervisorState, transition } from '../core/supervisor';
 import { appendEvent, appendSample, totalUsage, usageForProcess } from '../core/usage';
 import type { SupervisorAction, SupervisorEvent, SupervisorState } from '../core/supervisor';
 import { gameFromStored } from '../games/catalog';
+import { createGame } from '../games/new-game';
 import { METRICS_INTERVAL_MS, OPEN_INTERVAL_MS } from '../shared/constants';
-import { accountColor, initialsOf } from '../shared/format';
+import { accountColor, groupColor, initialsOf } from '../shared/format';
 import { CHANNELS } from '../shared/ipc';
 import type { ManagerCommand, MeasuredScreen } from '../shared/ipc';
 import { ProbeReadingSchema } from '../shared/schemas';
@@ -25,6 +26,8 @@ import type {
   GroupView,
   HistoryEvent,
   Layout,
+  NewGameError,
+  NewGameInput,
   ProbeReading,
   StoredAccount,
   UsageSample,
@@ -173,6 +176,15 @@ export class AccountManager {
     }
   }
 
+  // Returns what is wrong with the input, for the form to show, or null once the group exists.
+  createGame(input: NewGameInput): NewGameError | null {
+    const result = createGame(this.data, input);
+    if (!result.ok) return result.error;
+    this.commit(result.data);
+    this.startNewAccount(result.account, `Grupo ${result.game.name} criado`);
+    return null;
+  }
+
   enableAll(game: GameId): void {
     for (const account of this.data.accounts) if (account.gameId === game) this.setEnabled(account.id, true);
   }
@@ -183,7 +195,9 @@ export class AccountManager {
 
   view(): AppView {
     const accounts = this.accountViews();
-    const groups = this.data.games.map((stored) => this.groupView(gameFromStored(stored), accounts));
+    const games = this.data.games.map(gameFromStored);
+    const uncolored = games.filter((game) => game.dot === null);
+    const groups = games.map((game) => this.groupView(game, accounts, game.dot ?? groupColor(uncolored.indexOf(game))));
     return {
       groups,
       accounts,
@@ -504,11 +518,17 @@ export class AccountManager {
     const result = addAccount(this.data, game, name);
     if (!result.ok) return;
     this.commit(result.value.data);
-    const slot = this.createSlot(result.value.account);
-    if (slot !== null) {
-      this.record(slot, 'Ligada');
-      this.start(slot);
-    }
+    this.startNewAccount(result.value.account, 'Conta adicionada');
+  }
+
+  // The new account comes to the front, next to the other screens of its group.
+  private startNewAccount(account: StoredAccount, text: string): void {
+    const slot = this.createSlot(account);
+    if (slot === null) return;
+    this.record(slot, text);
+    this.select(account.id);
+    this.leaveFocus();
+    this.start(slot);
   }
 
   private detach(id: AccountId): void {
@@ -640,6 +660,7 @@ export class AccountManager {
         detached: slot.detached !== null,
         host: slot.host,
         partition: partitionFor(account.gameId, account.id),
+        readsSession: slot.game.readsSession,
         memoryMb: slot.memoryMb,
         cpu: slot.cpu,
         history: slot.history,
@@ -648,11 +669,13 @@ export class AccountManager {
     return views;
   }
 
-  private groupView(game: Game, accounts: readonly AccountView[]): GroupView {
+  private groupView(game: Game, accounts: readonly AccountView[], dot: string): GroupView {
     const members = accounts.filter((account) => account.gameId === game.id);
     return {
       gameId: game.id,
       name: game.name,
+      host: new URL(game.startUrl).hostname,
+      dot,
       limit: game.accountLimit,
       suggestedName: suggestName(this.data, game),
       accountIds: members.map((account) => account.id),

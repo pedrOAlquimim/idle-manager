@@ -2,6 +2,7 @@ import { app, ipcMain, shell } from 'electron';
 import type { BrowserWindow } from 'electron';
 import { CHANNELS } from '../shared/ipc';
 import type { Command } from '../shared/ipc';
+import type { NewGameInput } from '../shared/types';
 import type { AccountManager } from './account-manager';
 import { openAccountMenu, openGroupMenu } from './menus';
 
@@ -23,6 +24,7 @@ function run(manager: AccountManager, window: BrowserWindow, command: Command): 
 
 export function registerIpc(manager: AccountManager, window: BrowserWindow): void {
   ipcMain.handle(CHANNELS.requestView, () => manager.view());
+  ipcMain.handle(CHANNELS.createGame, (_event, input: NewGameInput) => manager.createGame(input));
   ipcMain.on(CHANNELS.command, (_event, command: Command) => {
     // One bad command must not become an uncaught exception that takes the main process down.
     try {

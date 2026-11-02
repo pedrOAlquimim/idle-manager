@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import { CHANNELS } from '../shared/ipc';
 import type { Command, WindowApi } from '../shared/ipc';
-import type { AccountId, AppView } from '../shared/types';
+import type { AccountId, AppView, NewGameError } from '../shared/types';
 
 const api: WindowApi = {
   requestView: () => ipcRenderer.invoke(CHANNELS.requestView) as Promise<AppView>,
@@ -16,6 +16,7 @@ const api: WindowApi = {
     ipcRenderer.on(CHANNELS.renameRequest, forward);
     return () => ipcRenderer.off(CHANNELS.renameRequest, forward);
   },
+  createGame: (input) => ipcRenderer.invoke(CHANNELS.createGame, input) as Promise<NewGameError | null>,
   send(command: Command) {
     ipcRenderer.send(CHANNELS.command, command);
   },

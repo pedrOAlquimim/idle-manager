@@ -13,7 +13,7 @@ import { INITIAL_DATA } from '../../src/shared/schemas';
 import { accountId, gameId } from '../../src/shared/types';
 import { CHANNELS } from '../../src/shared/ipc';
 import type { ManagerCommand } from '../../src/shared/ipc';
-import type { AccountId, AccountStatus, AccountView, AppData, AppView, Rect, StoredAccount } from '../../src/shared/types';
+import type { AccountId, AccountStatus, AccountView, AppData, AppView, Rect, StoredAccount, NewGameError, NewGameInput } from '../../src/shared/types';
 
 interface TestHook {
   manager: AccountManager;
@@ -75,8 +75,33 @@ export interface DetachedState {
   zoom: number | null;
 }
 
+export interface OtherSite {
+  url: string;
+  port: number;
+  close(): void;
+}
+
+// A second site, on its own loopback address: the app must take it for another host.
+export async function serveOtherSite(): Promise<OtherSite> {
+  const server = createServer((_request, response) => {
+    response.setHeader('content-type', 'text/html');
+    response.end('<!doctype html><title>Outro jogo</title><h1>Outro jogo</h1>');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.2', resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.2:${port}/`,
+    port,
+    close() {
+      server.closeAllConnections();
+      server.close();
+    },
+  };
+}
+
 export interface TestApp {
   app: ElectronApplication;
+  createGame(input: NewGameInput): Promise<NewGameError | null>;
   dataDir: string;
   gamePort: number;
   hideWindow(): Promise<void>;
@@ -180,6 +205,7 @@ export async function launchApp(options: { data?: AppData; dataDir?: string; por
     mainProcessErrors: () => errors,
     dataDir,
     gamePort: port,
+    createGame: async (input) => (await testApp.ui()).evaluate((value) => window.idleManager.createGame(value), input),
     hideWindow: () =>
       app.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0]?.hide();

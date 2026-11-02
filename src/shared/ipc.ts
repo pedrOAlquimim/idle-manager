@@ -1,4 +1,4 @@
-import type { AccountId, AppView, GameId, Layout, Rect } from './types';
+import type { AccountId, AppView, GameId, Layout, NewGameError, NewGameInput, Rect } from './types';
 
 export const CHANNELS = {
   command: 'ui:command',
@@ -7,6 +7,7 @@ export const CHANNELS = {
   probeReading: 'probe:reading',
   probeEscape: 'probe:escape',
   renameRequest: 'ui:rename-request',
+  createGame: 'ui:create-game',
 } as const;
 
 export interface MeasuredScreen { accountId: AccountId; rect: Rect }
@@ -35,6 +36,7 @@ export interface WindowApi {
   requestView(): Promise<AppView>;
   onChange(listener: (view: AppView) => void): () => void;
   onRenameRequest(listener: (id: AccountId) => void): () => void;
+  createGame(input: NewGameInput): Promise<NewGameError | null>;
   send(command: Command): void;
 }
 

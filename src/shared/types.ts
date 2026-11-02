@@ -81,6 +81,7 @@ export interface AccountView {
   detached: boolean;
   host: string;
   partition: string;
+  readsSession: boolean;
   memoryMb: number[];
   cpu: number[];
   history: HistoryEvent[];
@@ -89,6 +90,8 @@ export interface AccountView {
 export interface GroupView {
   gameId: GameId;
   name: string;
+  host: string;
+  dot: string;
   limit: number | null;
   suggestedName: string;
   accountIds: AccountId[];
@@ -107,6 +110,16 @@ export interface AppView {
   version: string;
   now: number;
 }
+
+export interface NewGameInput {
+  name: string;
+  url: string;
+  accountName: string;
+}
+
+export type NewGameError =
+  | 'empty-game-name' | 'invalid-url' | 'not-a-site' | 'duplicate-site'
+  | 'duplicate-game-name' | 'empty-account-name';
 
 export type AccountError = 'limit-reached' | 'empty-name' | 'duplicate-name';
 export type Result<T> = { ok: true; value: T } | { ok: false; error: AccountError };
