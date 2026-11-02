@@ -78,6 +78,7 @@ export class AccountManager {
   private readonly sampler: NodeJS.Timeout;
   private data: AppData;
   private screens = new Map<AccountId, MeasuredScreen>();
+  private modalOpen = false;
   private nextOpenAt = 0;
   private nextEventId = 1;
   private totals: UsageSample = { memoryMb: 0, cpu: 0 };
@@ -169,6 +170,9 @@ export class AccountManager {
       case 'set-notifications':
         this.updatePreferences({ notifications: command.enabled });
         return;
+      case 'set-modal-open':
+        this.setModalOpen(command.open);
+        return;
       default: {
         const _exhaustive: never = command;
         throw new Error(`Unknown command ${String(_exhaustive)}`);
@@ -237,7 +241,7 @@ export class AccountManager {
   // Returns whether the key was used, so the caller keeps it from reaching the page.
   handleShortcut(input: KeyPress): boolean {
     const position = accountShortcut(input);
-    if (position === null) return false;
+    if (position === null || this.modalOpen) return false;
     const target = this.activeAccounts()[position - 1];
     if (target === undefined) return false;
     this.select(target.id);
@@ -551,6 +555,14 @@ export class AccountManager {
     this.applyScreens();
   }
 
+  // A modal is HTML, and every view sits above HTML: the views step aside while it is open. They keep
+  // running, because they are hidden, not closed. The keyboard may be inside one of them, so it moves too.
+  private setModalOpen(open: boolean): void {
+    this.modalOpen = open;
+    this.applyScreens();
+    if (open) this.deps.window.webContents.focus();
+  }
+
   private select(id: AccountId): void {
     if (this.data.preferences.selectedId !== id && this.slots.has(id)) this.updatePreferences({ selectedId: id });
   }
@@ -633,7 +645,7 @@ export class AccountManager {
       if (view === null || slot.detached !== null) continue;
       const screen = this.screens.get(slot.accountId);
       const hidden = isScreenHidden({ status: slot.supervisor.status, detached: false });
-      view.setVisible(screen !== undefined && !hidden);
+      view.setVisible(screen !== undefined && !hidden && !this.modalOpen);
       if (screen === undefined) continue;
       view.setBounds(screen.rect);
       view.webContents.setZoomFactor(zoomForScreen(this.data.preferences.layout, screen.rect.height));

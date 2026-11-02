@@ -102,6 +102,7 @@ export async function serveOtherSite(): Promise<OtherSite> {
 export interface TestApp {
   app: ElectronApplication;
   createGame(input: NewGameInput): Promise<NewGameError | null>;
+  interfaceHasKeyboard(): Promise<boolean>;
   dataDir: string;
   gamePort: number;
   hideWindow(): Promise<void>;
@@ -205,6 +206,8 @@ export async function launchApp(options: { data?: AppData; dataDir?: string; por
     mainProcessErrors: () => errors,
     dataDir,
     gamePort: port,
+    interfaceHasKeyboard: () =>
+      app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.isFocused() ?? false),
     createGame: async (input) => (await testApp.ui()).evaluate((value) => window.idleManager.createGame(value), input),
     hideWindow: () =>
       app.evaluate(({ BrowserWindow }) => {

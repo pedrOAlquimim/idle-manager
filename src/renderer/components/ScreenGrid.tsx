@@ -1,3 +1,4 @@
+import { gridShape } from '../../core/policies';
 import type { AppView, GameId } from '../../shared/types';
 import { useMeasureScreens } from '../hooks/useMeasureScreens';
 import { ExpandSidebarIcon } from './Icons';
@@ -5,10 +6,11 @@ import { Screen } from './Screen';
 
 interface ScreenGridProps {
   view: AppView;
+  onNewGame: () => void;
   onAddAccount: (game: GameId) => void;
 }
 
-export function ScreenGrid({ view, onAddAccount }: ScreenGridProps) {
+export function ScreenGrid({ view, onNewGame, onAddAccount }: ScreenGridProps) {
   const gameArea = useMeasureScreens();
   const { layout, selectedId, sidebarOpen } = view.preferences;
 
@@ -17,8 +19,7 @@ export function ScreenGrid({ view, onAddAccount }: ScreenGridProps) {
   const accounts = view.accounts.filter((account) => account.gameId === group?.gameId);
   const screens = layout === 'focus' ? accounts.filter((account) => account.id === selected?.id) : accounts;
 
-  const columns = layout === 'row' ? screens.length : layout === 'focus' ? 1 : 2;
-  const rows = layout === 'grid' ? Math.ceil(screens.length / 2) : 1;
+  const { columns, rows } = gridShape(screens.length, layout);
 
   return (
     <main className="main">
@@ -29,8 +30,10 @@ export function ScreenGrid({ view, onAddAccount }: ScreenGridProps) {
       )}
       {screens.length === 0 ? (
         <div className="empty">
-          <p>Adicione sua primeira conta</p>
-          {group !== undefined && (
+          <p>{group === undefined ? 'Crie seu primeiro grupo' : 'Adicione sua primeira conta'}</p>
+          {group === undefined ? (
+            <button type="button" onClick={onNewGame}>Novo grupo de jogo</button>
+          ) : (
             <button type="button" onClick={() => onAddAccount(group.gameId)}>Nova conta</button>
           )}
         </div>

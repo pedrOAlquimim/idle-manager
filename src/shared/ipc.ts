@@ -22,6 +22,7 @@ export type ManagerCommand =
   | { type: 'toggle-focus'; accountId: AccountId }
   | { type: 'toggle-sidebar' | 'leave-focus' }
   | { type: 'set-notifications'; enabled: boolean }
+  | { type: 'set-modal-open'; open: boolean }
   | { type: 'screens'; screens: MeasuredScreen[] };
 
 // Commands that need a native menu or the operating system: the window layer handles them, never the manager.

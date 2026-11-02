@@ -1,6 +1,24 @@
 import { describe, expect, test } from 'vitest';
-import { accountShortcut, canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../src/core/policies';
+import { accountShortcut, canOpenExternal, decideNavigation, gridShape, isScreenHidden, zoomForScreen } from '../src/core/policies';
 import type { AccountStatus } from '../src/shared/types';
+
+describe('gridShape', () => {
+  test.each([
+    [1, 'grid', 1, 1],
+    [2, 'grid', 2, 1],
+    [3, 'grid', 2, 2],
+    [4, 'grid', 2, 2],
+    [5, 'grid', 3, 2],
+    [9, 'grid', 3, 3],
+    [10, 'grid', 4, 3],
+    [13, 'grid', 4, 4],
+    [4, 'focus', 1, 1],
+    [4, 'row', 4, 1],
+    [10, 'row', 10, 1],
+  ] as const)('%i screens in %s', (count, layout, columns, rows) => {
+    expect(gridShape(count, layout)).toEqual({ columns, rows });
+  });
+});
 
 describe('decideNavigation', () => {
   test.each([

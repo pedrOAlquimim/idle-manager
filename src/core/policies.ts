@@ -53,6 +53,20 @@ export function zoomForScreen(layout: Layout, areaHeight: number): number {
   return Math.min(1, Math.max(MIN_ZOOM, areaHeight / UNSCALED_HEIGHT));
 }
 
+const GRID_COLUMN_LIMITS: readonly { upTo: number; columns: number }[] = [
+  { upTo: 1, columns: 1 },
+  { upTo: 4, columns: 2 },
+  { upTo: 9, columns: 3 },
+];
+const MOST_GRID_COLUMNS = 4;
+
+export function gridShape(count: number, layout: Layout): { columns: number; rows: number } {
+  if (layout === 'focus') return { columns: 1, rows: 1 };
+  if (layout === 'row') return { columns: count, rows: 1 };
+  const columns = GRID_COLUMN_LIMITS.find((limit) => count <= limit.upTo)?.columns ?? MOST_GRID_COLUMNS;
+  return { columns, rows: Math.ceil(count / columns) };
+}
+
 const HIDDEN_STATUSES: readonly AccountStatus[] = ['off', 'down', 'blocked'];
 
 export function isScreenHidden(account: Pick<AccountView, 'status' | 'detached'>): boolean {

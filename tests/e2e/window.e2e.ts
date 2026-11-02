@@ -61,32 +61,6 @@ describe('sidebar', () => {
     expect(await page.locator('.tile').count()).toBe(0);
   });
 
-  test('adding through the inline field creates a screen', async () => {
-    const { app, page } = await start();
-    await page.getByRole('button', { name: 'Adicionar conta' }).first().click();
-    const field = page.getByLabel('Nome da conta');
-    expect(await field.inputValue()).toBe('Principal');
-    await field.press('Enter');
-    await page.locator('[data-account="principal"]').waitFor();
-    await app.waitForStatus('principal', 'login');
-    expect(app.storedData().accounts.map((stored) => stored.name)).toEqual(['Principal']);
-
-    await page.getByRole('button', { name: 'Adicionar conta' }).first().click();
-    expect(await page.getByLabel('Nome da conta').inputValue()).toBe('Alt 1');
-    await page.getByLabel('Nome da conta').fill('principal');
-    await page.getByLabel('Nome da conta').press('Enter');
-    await page.getByText('Já existe uma conta com esse nome').waitFor();
-    expect((await app.view()).accounts).toHaveLength(1);
-  });
-
-  test('at the limit, add is disabled with the limit text', async () => {
-    const { page } = await start(...['a', 'b', 'c', 'd'].map((id) => account(id, { enabled: false })));
-    const limit = page.getByRole('button', { name: 'Limite de 4 contas do PokeIdle' });
-    await limit.waitFor();
-    expect(await limit.isDisabled()).toBe(true);
-    expect(await page.getByRole('button', { name: 'Adicionar conta ao grupo' }).isDisabled()).toBe(true);
-  });
-
   test('collapsing the sidebar resizes the views', async () => {
     const { app, page } = await start(account('a'));
     await app.waitForStatus('a', 'login');
@@ -156,7 +130,7 @@ describe('following the layout', () => {
   });
 
   test('removing an account moves the next screen into its place', async () => {
-    const { app, page } = await start(account('a'), account('b'));
+    const { app, page } = await start(account('a'), account('b'), account('c'), account('d'));
     await app.waitForStatus('b', 'login', 15000);
     await expectViewOverGameArea(app, page, 'b');
     const before = await gameAreaOf(page, 'b');

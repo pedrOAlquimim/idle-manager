@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { GameId } from '../shared/types';
 import { AccountPanel } from './components/AccountPanel';
+import { AddAccountModal } from './components/AddAccountModal';
 import { HistoryPanel } from './components/HistoryPanel';
+import { NewGameModal } from './components/NewGameModal';
 import { ScreenGrid } from './components/ScreenGrid';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Sidebar } from './components/Sidebar';
@@ -10,12 +12,14 @@ import { useAppView } from './hooks/useAppView';
 
 export type ActivePanel = 'account' | 'history' | 'settings';
 
+type OpenModal = { kind: 'new-game' } | { kind: 'add-account'; gameId: GameId };
+
 export function App() {
   const view = useAppView();
   const [activePanel, setActivePanel] = useState<ActivePanel>('account');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const stopRenaming = useCallback(() => setRenamingId(null), []);
-  const [addingTo, setAddingTo] = useState<GameId | null>(null);
+  const [modal, setModal] = useState<OpenModal | null>(null);
 
   useEffect(() => {
     // The main process decides: it knows the current layout, this page may be a moment behind.
@@ -39,16 +43,16 @@ export function App() {
 
   if (view === null) return <div className="app" />;
 
-  const addAccount = (game: GameId): void => {
-    if (!view.preferences.sidebarOpen) window.idleManager.send({ type: 'toggle-sidebar' });
-    setAddingTo(game);
-  };
+  const openNewGame = (): void => setModal({ kind: 'new-game' });
+  const openAddAccount = (gameId: GameId): void => setModal({ kind: 'add-account', gameId });
+  const closeModal = (): void => setModal(null);
+  const addingTo = modal?.kind === 'add-account' ? view.groups.find((group) => group.gameId === modal.gameId) : undefined;
 
   return (
     <div className="app">
       <div className="body">
-        {view.preferences.sidebarOpen && <Sidebar view={view} addingTo={addingTo} onAddAccount={setAddingTo} />}
-        <ScreenGrid view={view} onAddAccount={addAccount} />
+        {view.preferences.sidebarOpen && <Sidebar view={view} onNewGame={openNewGame} onAddAccount={openAddAccount} />}
+        <ScreenGrid view={view} onNewGame={openNewGame} onAddAccount={openAddAccount} />
         <aside className="panel" aria-label="Detalhes da conta">
           {activePanel === 'history' && <HistoryPanel view={view} onBack={() => setActivePanel('account')} />}
           {activePanel === 'settings' && <SettingsPanel view={view} onBack={() => setActivePanel('account')} />}
@@ -60,6 +64,8 @@ export function App() {
         activePanel={activePanel}
         onOpenPanel={(panel) => setActivePanel((current) => (current === panel ? 'account' : panel))}
       />
+      {modal?.kind === 'new-game' && <NewGameModal onClose={closeModal} />}
+      {addingTo !== undefined && <AddAccountModal group={addingTo} accounts={view.accounts} onClose={closeModal} />}
     </div>
   );
 }

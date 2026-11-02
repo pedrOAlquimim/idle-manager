@@ -90,3 +90,5 @@ export const MuteIcon = () => (
     <path d="M17 9l5 6M22 9l-5 6" />
   </Stroke>
 );
+
+export const CloseIcon = () => <Stroke size={16}><path d="M6 6l12 12M18 6L6 18" /></Stroke>;
