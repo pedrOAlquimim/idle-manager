@@ -3,10 +3,15 @@ import type { AccountStatus, AccountView, Layout } from '../shared/types';
 
 export type NavigationDecision = 'inside' | 'external' | 'block';
 
-// Only the game's own hosts stay inside an account. Everything else on the web goes to the default
-// browser, and anything that is not http(s) never loads. `allowHttp` exists for the local fake game
-// used by the end-to-end tests.
-export function decideNavigation(url: string, hosts: readonly string[], allowHttp = false): NavigationDecision {
+// Only the game's own hosts stay inside an account, plus its whole `domain` when it has one. Everything
+// else on the web goes to the default browser, and anything that is not http(s) never loads. `allowHttp`
+// is for a game whose own address is http.
+export function decideNavigation(
+  url: string,
+  hosts: readonly string[],
+  allowHttp = false,
+  domain: string | null = null,
+): NavigationDecision {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -15,7 +20,9 @@ export function decideNavigation(url: string, hosts: readonly string[], allowHtt
   }
   const secure = parsed.protocol === 'https:';
   if (!secure && parsed.protocol !== 'http:') return 'block';
-  return hosts.includes(parsed.hostname) && (secure || allowHttp) ? 'inside' : 'external';
+  const { hostname } = parsed;
+  const ownHost = hosts.includes(hostname) || (domain !== null && (hostname === domain || hostname.endsWith(`.${domain}`)));
+  return ownHost && (secure || allowHttp) ? 'inside' : 'external';
 }
 
 export function canOpenExternal(lastInputAt: number | null, now: number): boolean {

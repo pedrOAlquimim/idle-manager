@@ -37,6 +37,17 @@ describe('decideNavigation', () => {
     expect(decideNavigation('http://evil.com/', ['127.0.0.1'], true)).toBe('external');
   });
 
+  test.each([
+    ['https://auth.jogo.com/', ['app.jogo.com'], false, 'jogo.com', 'inside'],
+    ['https://jogo.com/', ['app.jogo.com'], false, 'jogo.com', 'inside'],
+    ['https://notjogo.com/', ['app.jogo.com'], false, 'jogo.com', 'external'],
+    ['https://jogo.com.evil.net/', ['app.jogo.com'], false, 'jogo.com', 'external'],
+    ['http://jogo.com/', ['jogo.com'], false, 'jogo.com', 'external'],
+    ['http://jogo.com/', ['jogo.com'], true, 'jogo.com', 'inside'],
+  ])('%s with hosts %j, http %s, domain %s => %s', (url, hosts, allowHttp, domain, expected) => {
+    expect(decideNavigation(url, hosts, allowHttp, domain)).toBe(expected);
+  });
+
   test('with no hosts everything web is external', () => {
     expect(decideNavigation('https://pokeidle.io/', [])).toBe('external');
   });
