@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -9,6 +9,9 @@ import type { AppData } from '../src/shared/types';
 
 let directory: string;
 let file: string;
+
+// The tokens of the accounts are not in this file, but the nicks are: only the owner reads it.
+const permissions = (path: string): number => statSync(path).mode & 0o777;
 
 const DATA: AppData = {
   ...INITIAL_DATA,
@@ -60,6 +63,12 @@ describe('upgrading the file', () => {
     expect(existsSync(copy())).toBe(false);
   });
 
+  test('the copy is readable only by the owner, whatever the original allowed', () => {
+    place(versionOne);
+    new Repository(file).read();
+    expect(permissions(copy())).toBe(0o600);
+  });
+
   test('an invalid file is neither copied nor rewritten', () => {
     place('{"version":1');
     expect(() => new Repository(file).read()).toThrow(/Invalid data file/);
@@ -104,5 +113,10 @@ describe('Repository', () => {
     repository.write(DATA);
     expect(readdirSync(join(directory, 'nested'))).toEqual(['data.json']);
     expect(existsSync(file)).toBe(true);
+  });
+
+  test('the written file is readable only by the owner', () => {
+    new Repository(file).write(DATA);
+    expect(permissions(file)).toBe(0o600);
   });
 });

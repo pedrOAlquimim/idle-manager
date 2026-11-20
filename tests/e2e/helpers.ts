@@ -110,6 +110,12 @@ export async function serveOtherSite(): Promise<OtherSite> {
   };
 }
 
+export interface DeviceRequest {
+  prevented: boolean;
+  answered: boolean;
+  choice: unknown;
+}
+
 export interface TestApp {
   app: ElectronApplication;
   createGame(input: NewGameInput): Promise<NewGameError | null>;
@@ -126,6 +132,7 @@ export interface TestApp {
   crashInterface(): Promise<void>;
   interfaceRendered(): Promise<boolean>;
   throwInMain(message: string): Promise<number>;
+  deviceRequests(id: string): Promise<Record<'bluetooth' | 'certificate', DeviceRequest>>;
   interfaceHasKeyboard(): Promise<boolean>;
   dataDir: string;
   gamePort: number;
@@ -334,6 +341,28 @@ export async function launchApp(options: { data?: AppData; dataDir?: string; por
         await new Promise((resolve) => setTimeout(resolve, 300));
         return boxes;
       }, message),
+    // Emitted by hand, so no device or certificate store is needed: Electron's own pick runs only when nothing prevents it.
+    deviceRequests: (id) =>
+      app.evaluate(({ app: electronApp }, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        const contents = test.manager.webContentsOf(target as AccountId);
+        const ask = (emit: (event: { preventDefault(): void }, callback: (choice?: unknown) => void) => void): DeviceRequest => {
+          const outcome: DeviceRequest = { prevented: false, answered: false, choice: null };
+          emit({ preventDefault: () => (outcome.prevented = true) }, (choice) => {
+            outcome.answered = true;
+            outcome.choice = choice ?? null;
+          });
+          return outcome;
+        };
+        return {
+          bluetooth: ask((event, callback) =>
+            contents?.emit('select-bluetooth-device', event, [{ deviceName: 'Fone', deviceId: 'fone-1' }], callback),
+          ),
+          certificate: ask((event, callback) =>
+            electronApp.emit('select-client-certificate', event, contents, 'https://localhost/', [{ subjectName: 'Pedro' }], callback),
+          ),
+        };
+      }, id),
     interfaceHasKeyboard: () =>
       app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.isFocused() ?? false),
     createGame: async (input) => (await testApp.ui()).evaluate((value) => window.idleManager.createGame(value), input),

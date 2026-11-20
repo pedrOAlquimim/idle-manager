@@ -213,6 +213,16 @@ describe('what a page may ask for', () => {
   });
 });
 
+describe('a page asking for a device', () => {
+  test('gets none, where Electron would hand it the first Bluetooth device or certificate', async () => {
+    const { app } = await start(account('a'));
+    await app.waitForStatus('a', 'login');
+    const asked = await app.deviceRequests('a');
+    expect(asked.bluetooth).toEqual({ prevented: true, answered: true, choice: '' });
+    expect(asked.certificate).toEqual({ prevented: true, answered: true, choice: null });
+  });
+});
+
 describe('an error in the main process', () => {
   test('is logged and leaves the app running, with no box on the screen', async () => {
     const { app } = await start(account('a'));

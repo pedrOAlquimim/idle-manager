@@ -18,6 +18,18 @@ const testing = process.env.IDLEMANAGER_TEST === '1';
 // the wrong failure for an app that runs alone for hours, with every account behind it.
 process.on('uncaughtException', (error) => console.error('Uncaught exception:', error));
 
+// Left alone, Electron hands a page that asks the first Bluetooth device nearby, or the first client certificate.
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('select-bluetooth-device', (event, _devices, callback) => {
+    event.preventDefault();
+    callback('');
+  });
+});
+app.on('select-client-certificate', (event, _contents, _url, _list, callback) => {
+  event.preventDefault();
+  callback();
+});
+
 // Held here so the garbage collector does not take the icon away while the window is hidden.
 let tray: Tray | null = null;
 

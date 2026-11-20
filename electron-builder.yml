@@ -3,6 +3,11 @@ productName: IdleManager
 directories:
   output: release
   buildResources: build
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
 files:
   - dist/**
   - assets/**

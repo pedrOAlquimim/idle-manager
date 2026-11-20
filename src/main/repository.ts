@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { upgradeData } from '../games/migrate';
 import { INITIAL_DATA } from '../shared/schemas';
@@ -29,16 +29,19 @@ export class Repository {
   }
 
   // The file as it was before the upgrade, once: a second upgrade must not replace the first copy.
+  // A copy keeps the original's permissions, which older versions left readable by the group.
   private keepOriginal(): void {
     const copy = join(dirname(this.path), 'data.v1.json');
-    if (!existsSync(copy)) copyFileSync(this.path, copy);
+    if (existsSync(copy)) return;
+    copyFileSync(this.path, copy);
+    chmodSync(copy, 0o600);
   }
 
   // Written to a temporary file and renamed, so a crash mid-write cannot leave half a file behind.
   write(data: AppData): void {
     mkdirSync(dirname(this.path), { recursive: true });
     const temporary = `${this.path}.tmp`;
-    writeFileSync(temporary, JSON.stringify(data, null, 2));
+    writeFileSync(temporary, JSON.stringify(data, null, 2), { mode: 0o600 });
     renameSync(temporary, this.path);
   }
 }

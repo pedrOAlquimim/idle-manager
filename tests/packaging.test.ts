@@ -35,6 +35,14 @@ describe('electron-builder.yml', () => {
     expect(existsSync(join(ROOT, 'build', scalar('icon') ?? 'missing'))).toBe(true);
   });
 
+  // These only help someone already running as the user, but they would let that program run inside the app.
+  test('the installed app cannot be run as Node or opened to a debugger', () => {
+    expect(scalar('runAsNode')).toBe('false');
+    expect(scalar('enableNodeOptionsEnvironmentVariable')).toBe('false');
+    expect(scalar('enableNodeCliInspectArguments')).toBe('false');
+    expect(scalar('onlyLoadAppFromAsar')).toBe('true');
+  });
+
   test('writes the installer to release/, which git ignores', () => {
     expect(scalar('output')).toBe('release');
     expect(readFileSync(join(ROOT, '.gitignore'), 'utf8')).toMatch(/^release\/$/m);
