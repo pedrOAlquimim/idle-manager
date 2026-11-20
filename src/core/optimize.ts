@@ -20,6 +20,12 @@ export function canOptimize(status: AccountStatus): boolean {
   return status === 'connected' || status === 'login' || status === 'notice';
 }
 
+// The automatic one leaves a game notice alone: "Conta aberta em outro lugar" means the account is in use on
+// another device, and a reload would take the session back from it.
+export function canAutoOptimize(status: AccountStatus): boolean {
+  return status === 'connected' || status === 'login';
+}
+
 export function optimizeDueAt(hours: number | null, freshSince: number | null): number | null {
   return hours === null || freshSince === null ? null : freshSince + hours * HOUR_MS;
 }
@@ -47,7 +53,7 @@ export function nextAutoOptimization(
   let next: { id: AccountId; dueAt: number } | null = null;
   for (const candidate of candidates) {
     const dueAt = optimizeDueAt(candidate.hours, candidate.freshSince);
-    if (dueAt === null || dueAt > now || !canOptimize(candidate.status) || isInUse(candidate.lastUsedAt, now)) continue;
+    if (dueAt === null || dueAt > now || !canAutoOptimize(candidate.status) || isInUse(candidate.lastUsedAt, now)) continue;
     if (next === null || dueAt < next.dueAt) next = { id: candidate.id, dueAt };
   }
   return next?.id ?? null;

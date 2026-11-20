@@ -14,13 +14,13 @@ import {
 } from '../core/accounts';
 import { accountShortcut, canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../core/policies';
 import type { KeyPress } from '../core/policies';
-import { canOptimize, isInUse, nextAutoOptimization, optimizeDueAt, parseOptimizeHours } from '../core/optimize';
+import { canAutoOptimize, canOptimize, isInUse, nextAutoOptimization, optimizeDueAt, parseOptimizeHours } from '../core/optimize';
 import { initialSupervisorState, transition } from '../core/supervisor';
 import { appendEvent, appendSample, totalUsage, usageForProcess } from '../core/usage';
 import type { SupervisorAction, SupervisorEvent, SupervisorState } from '../core/supervisor';
 import { gameFromStored } from '../games/catalog';
 import { createGame } from '../games/new-game';
-import { METRICS_INTERVAL_MS, OPEN_INTERVAL_MS } from '../shared/constants';
+import { METRICS_INTERVAL_MS, OPEN_INTERVAL_MS, SLEEP_GAP_MS } from '../shared/constants';
 import { accountColor, groupColor, initialsOf } from '../shared/format';
 import { CHANNELS } from '../shared/ipc';
 import type { ManagerCommand, MeasuredScreen } from '../shared/ipc';
@@ -98,6 +98,7 @@ export class AccountManager {
   private screens = new Map<AccountId, MeasuredScreen>();
   private modalOpen = false;
   private lastAutoOptimizeAt: number | null = null;
+  private lastTickAt = 0;
   private nextOpenAt = 0;
   private nextEventId = 1;
   private totals: UsageSample = { memoryMb: 0, cpu: 0 };
@@ -272,6 +273,7 @@ export class AccountManager {
   }
 
   onResume(): void {
+    this.holdAutoOptimization(Date.now());
     for (const slot of this.slots.values()) this.feed(slot, { type: 'resumed', now: Date.now() });
   }
 
@@ -553,8 +555,16 @@ export class AccountManager {
     else load(slot.view.webContents, slot.game.startUrl);
   }
 
+  // Right after the machine wakes the network may not be back yet, and a restart then could end down: the
+  // automatic optimization waits its usual minute. Either signal may come first, so both hold it.
+  private holdAutoOptimization(now: number): void {
+    this.lastAutoOptimizeAt = now;
+  }
+
   private tick(): void {
     const now = Date.now();
+    if (this.lastTickAt !== 0 && now - this.lastTickAt >= SLEEP_GAP_MS) this.holdAutoOptimization(now);
+    this.lastTickAt = now;
     for (const slot of this.slots.values()) this.feed(slot, { type: 'tick', now });
     const candidates = [...this.slots.values()].map((slot) => ({
       id: slot.accountId,
@@ -849,7 +859,7 @@ export class AccountManager {
   }
 
   private optimizeState(slot: Slot, hours: number | null): { optimizeDueAt: number | null; optimizeWaiting: boolean } {
-    if (!canOptimize(slot.supervisor.status)) return { optimizeDueAt: null, optimizeWaiting: false };
+    if (!canAutoOptimize(slot.supervisor.status)) return { optimizeDueAt: null, optimizeWaiting: false };
     const dueAt = optimizeDueAt(hours, slot.freshSince);
     const now = Date.now();
     return { optimizeDueAt: dueAt, optimizeWaiting: dueAt !== null && dueAt <= now && isInUse(slot.lastUsedAt, now) };

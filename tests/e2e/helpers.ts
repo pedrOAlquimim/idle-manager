@@ -117,6 +117,7 @@ export interface TestApp {
   pageProcess(id: string): Promise<number | null>;
   ageAccount(id: string, ms: number): Promise<void>;
   allowNextAutoOptimization(): Promise<void>;
+  sleepWithoutResume(ms: number): Promise<void>;
   pageUrl(id: string): Promise<string | null>;
   delayNextOpen(delayMs: number): Promise<void>;
   fromAnotherPage(): Promise<{ view: string; game: string }>;
@@ -243,6 +244,14 @@ export async function launchApp(options: { data?: AppData; dataDir?: string; por
         const slot = slots.get(target);
         if (slot?.freshSince != null) slot.freshSince -= by;
       }, { target: id, by: ms }),
+    // In one step, so no tick runs in between: the last tick was long ago, and nothing holds the optimization.
+    sleepWithoutResume: (ms) =>
+      app.evaluate((_electron, by) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        const manager = test.manager as unknown as { lastTickAt: number; lastAutoOptimizeAt: number | null };
+        manager.lastTickAt = Date.now() - by;
+        manager.lastAutoOptimizeAt = null;
+      }, ms),
     allowNextAutoOptimization: () =>
       app.evaluate(() => {
         const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;

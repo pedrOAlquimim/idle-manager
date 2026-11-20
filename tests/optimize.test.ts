@@ -58,7 +58,7 @@ describe('nextAutoOptimization', () => {
     expect(nextAutoOptimization([ready('a', changes)], null, T)).toBeNull();
   });
 
-  test.each(['loading', 'reloading', 'off', 'down', 'blocked'] as const)('skips an account %s', (status: AccountStatus) => {
+  test.each(['loading', 'reloading', 'off', 'down', 'blocked', 'notice'] as const)('skips an account %s', (status: AccountStatus) => {
     expect(nextAutoOptimization([ready('a', { status })], null, T)).toBeNull();
   });
 

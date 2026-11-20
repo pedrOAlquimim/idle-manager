@@ -148,6 +148,25 @@ describe('the automatic optimization', () => {
     expect((await app.accountView('a')).optimizeWaiting).toBe(true);
   });
 
+  test('waits a minute after the machine wakes, whichever comes first, the resume event or the late tick', async () => {
+    const { app } = await start(account('a'), account('b'));
+    await app.waitForStatus('a', 'login');
+    await app.waitForStatus('b', 'login', 15000);
+    await setHours(app, 'a', 1, 'group');
+    const before = await Promise.all(['a', 'b'].map((id) => app.pageProcess(id)));
+
+    expect(await app.emitResume()).toBe(1);
+    await app.ageAccount('a', 61 * 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    expect(await app.pageProcess('a')).toBe(before[0]);
+
+    await app.ageAccount('b', 61 * 60_000);
+    await app.sleepWithoutResume(60_000);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    expect(await app.pageProcess('a')).toBe(before[0]);
+    expect(await app.pageProcess('b')).toBe(before[1]);
+  });
+
   test('four accounts due at once optimize a minute apart', { timeout: 90000 }, async () => {
     const ids = ['a', 'b', 'c', 'd'];
     const { app } = await start(...ids.map((id) => account(id)));
