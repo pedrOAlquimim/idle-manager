@@ -180,3 +180,122 @@ describe('the automatic optimization', () => {
     await app.waitFor(async () => (await app.viewBounds('a'))?.visible === true, 3000);
   });
 });
+
+describe('the panel', () => {
+  const panelOf = (page: Page) => page.getByRole('complementary', { name: 'Detalhes da conta' });
+  const openModal = async (page: Page) => {
+    await panelOf(page).getByRole('button', { name: 'Configurar' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.waitFor();
+    return dialog;
+  };
+
+  test('the bottom row has Foco, Otimizar, Desligar and Mais', async () => {
+    const { page } = await start(account('a'));
+    const names = await panelOf(page).locator('.acts').last().getByRole('button').allInnerTexts();
+    expect(names.map((name) => name.trim())).toEqual(['Foco', 'Otimizar', 'Desligar', 'Mais']);
+  });
+
+  test('Otimizar in the panel optimizes the account', async () => {
+    const { app, page } = await start(account('a'));
+    await app.waitForStatus('a', 'login');
+    const before = await app.pageProcess('a');
+    await panelOf(page).getByRole('button', { name: 'Otimizar' }).click();
+    await waitForEntry(app, 'a');
+    expect(await app.pageProcess('a')).not.toBe(before);
+  });
+
+  test('Otimizar is disabled for an account turned off', async () => {
+    const { page } = await start(account('a', { enabled: false }));
+    expect(await panelOf(page).getByRole('button', { name: 'Otimizar' }).isDisabled()).toBe(true);
+  });
+
+  test('the panel line follows the setting', async () => {
+    const { app, page } = await start(account('a'));
+    await app.waitForStatus('a', 'login');
+    await panelOf(page).getByText('Otimização automática: desligada').waitFor();
+    await setHours(app, 'a', 6);
+    await panelOf(page).getByText(/^Otimização automática: a cada 6\sh · próxima às \d\d:\d\d$/).waitFor();
+  });
+
+  test('Configurar opens the modal with the setting of the account', async () => {
+    const { page } = await start(account('a'));
+    const dialog = await openModal(page);
+    await dialog.getByRole('heading', { name: 'Otimização automática — a' }).waitFor();
+    expect(await dialog.getByRole('checkbox', { name: 'Otimizar sozinha' }).isChecked()).toBe(false);
+    expect(await dialog.getByRole('button', { name: '6 h', exact: true }).isDisabled()).toBe(true);
+    expect(await dialog.getByLabel('Horas personalizadas').isDisabled()).toBe(true);
+  });
+
+  test('a preset saves its hours', async () => {
+    const { app, page } = await start(account('a'));
+    const dialog = await openModal(page);
+    await dialog.getByRole('checkbox', { name: 'Otimizar sozinha' }).check();
+    await dialog.getByRole('button', { name: '12 h', exact: true }).click();
+    expect(await dialog.getByRole('button', { name: '12 h', exact: true }).getAttribute('aria-pressed')).toBe('true');
+    await dialog.getByRole('button', { name: 'Salvar' }).click();
+    await dialog.waitFor({ state: 'detached' });
+    expect(app.storedData().accounts[0]?.autoOptimizeHours).toBe(12);
+  });
+
+  test('a custom value saves its hours', async () => {
+    const { app, page } = await start(account('a'));
+    const dialog = await openModal(page);
+    await dialog.getByRole('checkbox', { name: 'Otimizar sozinha' }).check();
+    await dialog.getByLabel('Horas personalizadas').fill('36');
+    await dialog.getByRole('button', { name: 'Salvar' }).click();
+    await dialog.waitFor({ state: 'detached' });
+    expect(app.storedData().accounts[0]?.autoOptimizeHours).toBe(36);
+  });
+
+  test.each(['0', '73', '6,5', 'abc', ''])('the custom value %j is refused', async (raw) => {
+    const { app, page } = await start(account('a'));
+    const dialog = await openModal(page);
+    await dialog.getByRole('checkbox', { name: 'Otimizar sozinha' }).check();
+    const field = dialog.getByLabel('Horas personalizadas');
+    await field.fill('5');
+    await field.fill(raw);
+    await dialog.getByRole('button', { name: 'Salvar' }).click();
+    await dialog.getByText('Use de 1 a 72 horas').waitFor();
+    expect(app.storedData().accounts[0]?.autoOptimizeHours).toBeNull();
+  });
+
+  test('choosing a preset clears the custom field, and typing clears the preset', async () => {
+    const { page } = await start(account('a'));
+    const dialog = await openModal(page);
+    await dialog.getByRole('checkbox', { name: 'Otimizar sozinha' }).check();
+    const field = dialog.getByLabel('Horas personalizadas');
+    await field.fill('36');
+    expect(await dialog.locator('[aria-pressed="true"]').count()).toBe(0);
+    await dialog.getByRole('button', { name: '2 h', exact: true }).click();
+    expect(await field.inputValue()).toBe('');
+    expect(await dialog.getByRole('button', { name: '2 h', exact: true }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('unchecking saves no interval', async () => {
+    const { app, page } = await start(account('a', { autoOptimizeHours: 6 }));
+    const dialog = await openModal(page);
+    expect(await dialog.getByRole('button', { name: '6 h', exact: true }).getAttribute('aria-pressed')).toBe('true');
+    await dialog.getByRole('checkbox', { name: 'Otimizar sozinha' }).uncheck();
+    await dialog.getByRole('button', { name: 'Salvar' }).click();
+    await dialog.waitFor({ state: 'detached' });
+    expect(app.storedData().accounts[0]?.autoOptimizeHours).toBeNull();
+  });
+
+  test('Aplicar às outras contas sets the whole group and closes', async () => {
+    const { app, page } = await start(account('a'), account('b'), account('c'));
+    const dialog = await openModal(page);
+    await dialog.getByRole('checkbox', { name: 'Otimizar sozinha' }).check();
+    await dialog.getByRole('button', { name: '4 h', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Aplicar às outras contas' }).click();
+    await dialog.waitFor({ state: 'detached' });
+    expect(app.storedData().accounts.map((stored) => stored.autoOptimizeHours)).toEqual([4, 4, 4]);
+  });
+
+  test('an interval that is not a preset opens in the custom field', async () => {
+    const { page } = await start(account('a', { autoOptimizeHours: 36 }));
+    const dialog = await openModal(page);
+    expect(await dialog.getByLabel('Horas personalizadas').inputValue()).toBe('36');
+    expect(await dialog.locator('[aria-pressed="true"]').count()).toBe(0);
+  });
+});

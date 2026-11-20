@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { GameId } from '../shared/types';
+import type { GameId, AccountId } from '../shared/types';
 import { AccountPanel } from './components/AccountPanel';
 import { AddAccountModal } from './components/AddAccountModal';
 import { HistoryPanel } from './components/HistoryPanel';
 import { NewGameModal } from './components/NewGameModal';
+import { OptimizeModal } from './components/OptimizeModal';
 import { ScreenGrid } from './components/ScreenGrid';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Sidebar } from './components/Sidebar';
@@ -12,7 +13,7 @@ import { useAppView } from './hooks/useAppView';
 
 export type ActivePanel = 'account' | 'history' | 'settings';
 
-type OpenModal = { kind: 'new-game' } | { kind: 'add-account'; gameId: GameId };
+type OpenModal = { kind: 'new-game' } | { kind: 'add-account'; gameId: GameId } | { kind: 'optimize'; accountId: AccountId };
 
 export function App() {
   const view = useAppView();
@@ -46,6 +47,7 @@ export function App() {
   const openNewGame = (): void => setModal({ kind: 'new-game' });
   const openAddAccount = (gameId: GameId): void => setModal({ kind: 'add-account', gameId });
   const closeModal = (): void => setModal(null);
+  const optimizing = modal?.kind === 'optimize' ? view.accounts.find((account) => account.id === modal.accountId) : undefined;
   const addingTo = modal?.kind === 'add-account' ? view.groups.find((group) => group.gameId === modal.gameId) : undefined;
 
   return (
@@ -57,7 +59,7 @@ export function App() {
           <aside className="panel" aria-label="Detalhes da conta">
             {activePanel === 'history' && <HistoryPanel view={view} onBack={() => setActivePanel('account')} />}
             {activePanel === 'settings' && <SettingsPanel view={view} onBack={() => setActivePanel('account')} />}
-            {activePanel === 'account' && <AccountPanel view={view} renamingId={renamingId} onRenameDone={stopRenaming} />}
+            {activePanel === 'account' && <AccountPanel view={view} renamingId={renamingId} onRenameDone={stopRenaming} onConfigureOptimize={(accountId) => setModal({ kind: 'optimize', accountId })} />}
           </aside>
         )}
       </div>
@@ -76,6 +78,7 @@ export function App() {
       />
       {modal?.kind === 'new-game' && <NewGameModal onClose={closeModal} />}
       {addingTo !== undefined && <AddAccountModal group={addingTo} accounts={view.accounts} onClose={closeModal} />}
+      {optimizing !== undefined && <OptimizeModal account={optimizing} onClose={closeModal} />}
     </div>
   );
 }

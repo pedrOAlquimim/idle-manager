@@ -95,3 +95,4 @@ export const CloseIcon = () => <Stroke size={16}><path d="M6 6l12 12M18 6L6 18" 
 
 export const CollapsePanelIcon = () => <Stroke size={16}><path d="M13 17l5-5-5-5M6 17l5-5-5-5" /></Stroke>;
 export const ExpandPanelIcon = () => <Stroke size={14}><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5" /></Stroke>;
+export const OptimizeIcon = () => <Stroke size={15}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></Stroke>;

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
+import { canOptimize } from '../../core/optimize';
 import { isScreenHidden } from '../../core/policies';
 import { EVENTS_IN_PANEL } from '../../shared/constants';
-import { formatNumber, formatTime, statusColor, statusText } from '../../shared/format';
-import type { AccountView, AppView } from '../../shared/types';
-import { CollapsePanelIcon, FocusIcon, HomeIcon, MoreIcon, MuteIcon, NextIcon, PopIcon, PowerIcon, ReloadIcon, SoundIcon } from './Icons';
+import { formatNumber, formatTime, optimizeText, statusColor, statusText } from '../../shared/format';
+import type { AccountId, AccountView, AppView } from '../../shared/types';
+import { CollapsePanelIcon, FocusIcon, HomeIcon, MoreIcon, MuteIcon, NextIcon, OptimizeIcon, PopIcon, PowerIcon, ReloadIcon, SoundIcon } from './Icons';
 import { Sparkline } from './Sparkline';
 
 interface AccountPanelProps {
   view: AppView;
   renamingId: string | null;
   onRenameDone: () => void;
+  onConfigureOptimize: (id: AccountId) => void;
 }
 
 const sameName = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -63,7 +65,7 @@ function RenameField({ account, accounts, onDone }: { account: AccountView; acco
   );
 }
 
-export function AccountPanel({ view, renamingId, onRenameDone }: AccountPanelProps) {
+export function AccountPanel({ view, renamingId, onRenameDone, onConfigureOptimize }: AccountPanelProps) {
   const { selectedId, layout } = view.preferences;
   const account = view.accounts.find((candidate) => candidate.id === selectedId) ?? view.accounts[0];
   const stableDone = useCallback(onRenameDone, [onRenameDone]);
@@ -135,6 +137,11 @@ export function AccountPanel({ view, renamingId, onRenameDone }: AccountPanelPro
         <Sparkline values={account.memoryMb} color="var(--mem)" />
         <div className="kv"><span>CPU</span><b>{cpu === undefined ? '—' : `${formatNumber(cpu, 1)}%`}</b></div>
         <Sparkline values={account.cpu} color="var(--cpu)" ceiling={1.5} />
+        <div className="opt">
+          {/* "6 h" must not break across two lines. */}
+          <span>{optimizeText(account, view.now).replace(/(\d+) h\b/, '$1\u00a0h')}</span>
+          <button className="link" type="button" onClick={() => onConfigureOptimize(id)}>Configurar</button>
+        </div>
       </div>
 
       <div className="sec hist">
@@ -152,9 +159,17 @@ export function AccountPanel({ view, renamingId, onRenameDone }: AccountPanelPro
         )}
       </div>
 
-      <div className="acts acts3">
+      <div className="acts acts4 bottom">
         <button className="act" type="button" aria-pressed={layout === 'focus'} onClick={() => send({ type: 'toggle-focus', accountId: id })}>
           <FocusIcon />Foco
+        </button>
+        <button
+          className="act"
+          type="button"
+          disabled={!canOptimize(account.status)}
+          onClick={() => send({ type: 'optimize', accountId: id })}
+        >
+          <OptimizeIcon />Otimizar
         </button>
         <button
           className="act"
