@@ -34,7 +34,7 @@ if (existsSync('src/renderer/main.tsx')) {
     platform: 'browser',
     format: 'esm',
     target: 'chrome140',
-    loader: { '.woff2': 'file', '.woff': 'file' },
+    loader: { '.woff2': 'file', '.woff': 'file', '.png': 'file' },
     sourcemap: true,
     logLevel: 'warning',
   });

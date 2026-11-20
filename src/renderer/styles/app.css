@@ -15,7 +15,7 @@ svg { flex: none; }
 .side { width: 248px; flex: none; padding: 14px 12px; display: flex; flex-direction: column; gap: 10px; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; }
 .brand { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 6px; }
 .brand b { font-size: 15px; }
-.logo { width: 24px; height: 24px; border-radius: 6px; background: #3b3466; color: #d6ccff; display: inline-flex; align-items: center; justify-content: center; font-family: var(--pixel); font-size: 12px; margin-right: 10px; }
+.logo { width: 24px; height: 24px; margin-right: 10px; }
 .profile { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border-radius: 10px; background: #141722; border: 1px solid #1f2333; }
 .av { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; border-radius: 7px; width: 26px; height: 26px; font-size: 11px; }
 .av.lg { width: 32px; height: 32px; border-radius: 8px; font-size: 12px; }

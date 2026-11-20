@@ -1,5 +1,6 @@
 import { formatNumber, statusColor } from '../../shared/format';
 import type { AccountView, AppView, GameId, GroupView } from '../../shared/types';
+import onigiri from '../onigiri.png';
 import { CollapseIcon, DownIcon, GridIcon, MoreIcon, PlusIcon } from './Icons';
 
 interface SidebarProps {
@@ -39,7 +40,7 @@ export function Sidebar({ view, onNewGame, onAddAccount }: SidebarProps) {
     <nav className="side" aria-label="Contas">
       <div className="brand">
         <span style={{ display: 'flex', alignItems: 'center' }}>
-          <span className="logo">IM</span>
+          <img className="logo" src={onigiri} alt="" />
           <b>IdleManager</b>
         </span>
         <button
