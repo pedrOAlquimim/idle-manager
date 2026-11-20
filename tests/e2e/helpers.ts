@@ -50,6 +50,7 @@ export const account = (id: string, partial: Partial<StoredAccount> = {}): Store
   enabled: true,
   muted: true,
   nick: null,
+  autoOptimizeHours: null,
   ...partial,
 });
 

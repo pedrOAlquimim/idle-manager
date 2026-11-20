@@ -45,6 +45,16 @@ export function groupColor(position: number): string {
   return GROUP_COLORS[position % GROUP_COLORS.length] ?? GROUP_COLORS[0];
 }
 
+export function optimizeText(account: AccountView, now: number): string {
+  const hours = account.autoOptimizeHours;
+  if (hours === null) return 'Otimização automática: desligada';
+  const base = `Otimização automática: a cada ${hours} h`;
+  const dueAt = account.optimizeDueAt;
+  if (dueAt === null) return base;
+  if (dueAt > now) return `${base} · próxima às ${formatTime(dueAt)}`;
+  return account.optimizeWaiting ? `${base} · esperando a conta ficar parada` : `${base} · em instantes`;
+}
+
 // `down` and `blocked` use the spec's fixed copy: the supervisor's message for them is the notification
 // headline, which is capitalised for a title and not for a status line.
 export function statusText(account: AccountView, now: number): string {

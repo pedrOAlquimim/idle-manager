@@ -4,6 +4,7 @@ import { upgradeData } from '../src/games/migrate';
 const POKEIDLE_GROUP = { id: 'pokeidle', name: 'PokeIdle', startUrl: 'https://pokeidle.io/app' };
 const OLD_PREFERENCES = { layout: 'row', selectedId: 'principal', sidebarOpen: false, notifications: false };
 const PRINCIPAL = { id: 'principal', gameId: 'pokeidle', name: 'Principal', enabled: false, muted: true, nick: 'Ash' };
+const UPGRADED_PRINCIPAL = { ...PRINCIPAL, autoOptimizeHours: null };
 
 const versionOne = (changes: Record<string, unknown> = {}) => ({
   version: 1,
@@ -20,7 +21,7 @@ describe('upgradeData', () => {
       data: {
         version: 2,
         games: [POKEIDLE_GROUP],
-        accounts: [PRINCIPAL],
+        accounts: [UPGRADED_PRINCIPAL],
         nicks: { pokeidle: ['Ash'] },
         preferences: { ...OLD_PREFERENCES, panelOpen: true },
       },
@@ -50,7 +51,7 @@ describe('upgradeData', () => {
     const current = {
       version: 2,
       games: [POKEIDLE_GROUP],
-      accounts: [PRINCIPAL],
+      accounts: [UPGRADED_PRINCIPAL],
       nicks: {},
       preferences: { ...OLD_PREFERENCES, panelOpen: false },
     };

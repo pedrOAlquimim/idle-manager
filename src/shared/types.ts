@@ -36,6 +36,7 @@ export interface StoredAccount {
   enabled: boolean;
   muted: boolean;
   nick: string | null;
+  autoOptimizeHours: number | null;
 }
 
 export interface Preferences {
@@ -82,6 +83,9 @@ export interface AccountView {
   host: string;
   partition: string;
   readsSession: boolean;
+  autoOptimizeHours: number | null;
+  optimizeDueAt: number | null;
+  optimizeWaiting: boolean;
   memoryMb: number[];
   cpu: number[];
   history: HistoryEvent[];

@@ -79,6 +79,15 @@ describe('stored data schema', () => {
     expect(() => AppDataSchema.parse({ ...INITIAL_DATA, accounts: [account] })).toThrow();
   });
 
+  test('an account saved before the optimization setting reads as off, and its limits hold', () => {
+    const saved = { id: 'a', gameId: 'pokeidle', name: 'a', enabled: true, muted: true, nick: null };
+    const parse = (account: Record<string, unknown>) => AppDataSchema.parse({ ...INITIAL_DATA, accounts: [account] });
+    expect(parse(saved).accounts[0]?.autoOptimizeHours).toBeNull();
+    expect(parse({ ...saved, autoOptimizeHours: 6 }).accounts[0]?.autoOptimizeHours).toBe(6);
+    expect(() => parse({ ...saved, autoOptimizeHours: 0 })).toThrow();
+    expect(() => parse({ ...saved, autoOptimizeHours: 73 })).toThrow();
+  });
+
   test('ProbeReadingSchema rejects missing fields', () => {
     expect(() => ProbeReadingSchema.parse({ gamePresent: true })).toThrow();
   });

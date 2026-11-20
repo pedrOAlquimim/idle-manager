@@ -16,6 +16,8 @@ const storedAccountSchema = z.object({
   enabled: z.boolean(),
   muted: z.boolean(),
   nick: z.string().nullable(),
+  // Files written before this setting existed read as off.
+  autoOptimizeHours: z.number().int().min(1).max(72).nullable().default(null),
 });
 
 const storedGameSchema = z.object({

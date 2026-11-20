@@ -8,6 +8,13 @@ export const METRICS_INTERVAL_MS = 2000;
 export const USER_GESTURE_WINDOW_MS = 3000;
 export const SLEEP_GAP_MS = 10000;
 
+export const HOUR_MS = 3_600_000;
+export const OPTIMIZE_PRESETS_HOURS = [1, 2, 4, 6, 12, 24] as const;
+export const MIN_OPTIMIZE_HOURS = 1;
+export const MAX_OPTIMIZE_HOURS = 72;
+export const RECENT_USE_MS = 300_000;
+export const AUTO_OPTIMIZE_GAP_MS = 60_000;
+
 export const USAGE_SAMPLES = 30;
 export const EVENTS_PER_ACCOUNT = 50;
 export const EVENTS_IN_PANEL = 6;

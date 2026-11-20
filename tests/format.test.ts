@@ -9,6 +9,7 @@ import {
   statusColor,
   statusText,
   groupColor,
+  optimizeText,
 } from '../src/shared/format';
 import { accountId, gameId } from '../src/shared/types';
 import type { AccountStatus, AccountView } from '../src/shared/types';
@@ -24,6 +25,9 @@ const view = (partial: Partial<AccountView> = {}): AccountView => ({
   attempts: 0,
   enabledSince: 0,
   readsSession: true,
+  autoOptimizeHours: null,
+  optimizeDueAt: null,
+  optimizeWaiting: false,
   muted: true,
   detached: false,
   host: 'pokeidle.io',
@@ -97,6 +101,23 @@ describe('accountColor', () => {
   test('accountColor falls back to the first color for a bad index and wraps negatives', () => {
     expect(accountColor(-1)).toEqual(accountColor(3));
     expect(accountColor(Number.NaN)).toEqual(accountColor(0));
+  });
+});
+
+describe('optimizeText', () => {
+  const now = 10_000_000;
+  test('says off, the interval, the next time, or why it waits', () => {
+    expect(optimizeText(view(), now)).toBe('Otimização automática: desligada');
+    expect(optimizeText(view({ autoOptimizeHours: 6 }), now)).toBe('Otimização automática: a cada 6 h');
+    expect(optimizeText(view({ autoOptimizeHours: 6, optimizeDueAt: now + 60_000 }), now)).toBe(
+      `Otimização automática: a cada 6 h · próxima às ${formatTime(now + 60_000)}`,
+    );
+    expect(optimizeText(view({ autoOptimizeHours: 6, optimizeDueAt: now - 1, optimizeWaiting: true }), now)).toBe(
+      'Otimização automática: a cada 6 h · esperando a conta ficar parada',
+    );
+    expect(optimizeText(view({ autoOptimizeHours: 6, optimizeDueAt: now - 1 }), now)).toBe(
+      'Otimização automática: a cada 6 h · em instantes',
+    );
   });
 });
 

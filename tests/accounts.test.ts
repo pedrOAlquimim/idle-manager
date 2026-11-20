@@ -6,6 +6,7 @@ import {
   registerNick,
   removeAccount,
   removeGame,
+  setAutoOptimize,
   renameAccount,
   suggestName,
 } from '../src/core/accounts';
@@ -144,6 +145,7 @@ describe('addAccount', () => {
       enabled: true,
       muted: true,
       nick: null,
+      autoOptimizeHours: null,
     });
     expect(data.accounts).toEqual([account]);
     expect(data.preferences.selectedId).toBe('principal');
@@ -325,5 +327,34 @@ describe('removeGame', () => {
   test('a game that does not exist changes nothing', () => {
     const data = twoGames();
     expect(removeGame(data, gameId('ghost'))).toEqual(data);
+  });
+});
+
+describe('setAutoOptimize', () => {
+  const twoGames = (): AppData => {
+    const first = withAccounts(['a', 'b'], POKEIDLE);
+    return withAccounts(['x'], OTHER_GAME, first);
+  };
+
+  test('new accounts start without an interval', () => {
+    expect(twoGames().accounts.map((account) => account.autoOptimizeHours)).toEqual([null, null, null]);
+  });
+
+  test('changes only the account', () => {
+    const data = twoGames();
+    const after = setAutoOptimize(data, idAt(data, 0), 6, 'account');
+    expect(after.accounts.map((account) => account.autoOptimizeHours)).toEqual([6, null, null]);
+  });
+
+  test('changes the whole group of the account, not other games', () => {
+    const data = twoGames();
+    const after = setAutoOptimize(data, idAt(data, 0), 6, 'group');
+    expect(after.accounts.map((account) => account.autoOptimizeHours)).toEqual([6, 6, null]);
+  });
+
+  test('null turns it off', () => {
+    const data = twoGames();
+    const on = setAutoOptimize(data, idAt(data, 0), 6, 'group');
+    expect(setAutoOptimize(on, idAt(data, 1), null, 'account').accounts.map((account) => account.autoOptimizeHours)).toEqual([6, null, null]);
   });
 });

@@ -81,6 +81,7 @@ export function addAccount(
     enabled: true,
     muted: true,
     nick: null,
+    autoOptimizeHours: null,
   };
   const next: AppData = {
     ...data,
@@ -130,6 +131,17 @@ export function removeAccount(data: AppData, id: AccountId): AppData {
     accounts,
     nicks: releaseNick(data.nicks, target, accounts),
     preferences: { ...data.preferences, selectedId },
+  };
+}
+
+export function setAutoOptimize(data: AppData, id: AccountId, hours: number | null, scope: 'account' | 'group'): AppData {
+  const target = data.accounts.find((account) => account.id === id);
+  if (target === undefined) return data;
+  const touches = (account: StoredAccount): boolean =>
+    scope === 'account' ? account.id === id : account.gameId === target.gameId;
+  return {
+    ...data,
+    accounts: data.accounts.map((account) => (touches(account) ? { ...account, autoOptimizeHours: hours } : account)),
   };
 }
 

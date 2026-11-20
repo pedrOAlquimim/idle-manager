@@ -13,7 +13,7 @@ let file: string;
 const DATA: AppData = {
   ...INITIAL_DATA,
   accounts: [
-    { id: accountId('principal'), gameId: gameId('pokeidle'), name: 'Principal', enabled: true, muted: true, nick: 'Ash' },
+    { id: accountId('principal'), gameId: gameId('pokeidle'), name: 'Principal', enabled: true, muted: true, nick: 'Ash', autoOptimizeHours: null },
   ],
   nicks: { pokeidle: ['Ash'] },
 };
@@ -30,7 +30,7 @@ afterEach(() => {
 describe('upgrading the file', () => {
   const versionOne = JSON.stringify({
     version: 1,
-    accounts: [{ id: 'principal', gameId: 'pokeidle', name: 'Principal', enabled: true, muted: true, nick: null }],
+    accounts: [{ id: 'principal', gameId: 'pokeidle', name: 'Principal', enabled: true, muted: true, nick: null, autoOptimizeHours: null }],
     nicks: {},
     preferences: { layout: 'grid', selectedId: 'principal', sidebarOpen: true, notifications: true },
   });

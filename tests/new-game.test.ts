@@ -97,7 +97,7 @@ describe('createGame', () => {
     const data: AppData = deepFreeze({
       ...structuredClone(INITIAL_DATA),
       games: [stored('foo', 'Foo', 'https://foo.example.com/')],
-      accounts: [{ id: accountId('bar-baz'), gameId: gameId('foo'), name: 'Bar Baz', enabled: true, muted: true, nick: null }],
+      accounts: [{ id: accountId('bar-baz'), gameId: gameId('foo'), name: 'Bar Baz', enabled: true, muted: true, nick: null, autoOptimizeHours: null }],
     });
     const { game, account } = created(data, { name: 'Foo Bar', accountName: 'Baz' });
     expect(game.id).toBe('foo-bar');
