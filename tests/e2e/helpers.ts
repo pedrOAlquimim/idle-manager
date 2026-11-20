@@ -114,6 +114,9 @@ export interface TestApp {
   app: ElectronApplication;
   createGame(input: NewGameInput): Promise<NewGameError | null>;
   reportUnresponsive(id: string): Promise<void>;
+  pageProcess(id: string): Promise<number | null>;
+  ageAccount(id: string, ms: number): Promise<void>;
+  allowNextAutoOptimization(): Promise<void>;
   pageUrl(id: string): Promise<string | null>;
   delayNextOpen(delayMs: number): Promise<void>;
   fromAnotherPage(): Promise<{ view: string; game: string }>;
@@ -227,6 +230,24 @@ export async function launchApp(options: { data?: AppData; dataDir?: string; por
     mainProcessErrors: () => errors,
     dataDir,
     gamePort: port,
+    pageProcess: (id) =>
+      app.evaluate((_electron, target) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        return test.manager.webContentsOf(target as AccountId)?.getOSProcessId() ?? null;
+      }, id),
+    // These move the private clocks of an account, as delayNextOpen does, so hours pass in a moment.
+    ageAccount: (id, ms) =>
+      app.evaluate((_electron, { target, by }) => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        const slots = (test.manager as unknown as { slots: Map<string, { freshSince: number | null }> }).slots;
+        const slot = slots.get(target);
+        if (slot?.freshSince != null) slot.freshSince -= by;
+      }, { target: id, by: ms }),
+    allowNextAutoOptimization: () =>
+      app.evaluate(() => {
+        const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;
+        (test.manager as unknown as { lastAutoOptimizeAt: number | null }).lastAutoOptimizeAt = null;
+      }),
     reportUnresponsive: (id) =>
       app.evaluate((_electron, target) => {
         const test = (globalThis as unknown as { idleManagerTest: TestHook }).idleManagerTest;

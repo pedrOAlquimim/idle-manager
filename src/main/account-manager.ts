@@ -9,10 +9,12 @@ import {
   removeAccount,
   removeGame,
   renameAccount,
+  setAutoOptimize,
   suggestName,
 } from '../core/accounts';
 import { accountShortcut, canOpenExternal, decideNavigation, isScreenHidden, zoomForScreen } from '../core/policies';
 import type { KeyPress } from '../core/policies';
+import { canOptimize, isInUse, nextAutoOptimization, optimizeDueAt, parseOptimizeHours } from '../core/optimize';
 import { initialSupervisorState, transition } from '../core/supervisor';
 import { appendEvent, appendSample, totalUsage, usageForProcess } from '../core/usage';
 import type { SupervisorAction, SupervisorEvent, SupervisorState } from '../core/supervisor';
@@ -67,6 +69,11 @@ interface Slot {
   detached: BaseWindow | null;
   pageLoaded: boolean;
   restarting: boolean;
+  // When the page's current process began: the automatic optimization counts from here.
+  freshSince: number | null;
+  // The last click or key in the account. Unlike lastInputAt, opening a link does not use it up.
+  lastUsedAt: number | null;
+  optimizing: { auto: boolean; beforeMb: number | null } | null;
 }
 
 const TICK_MS = 1000;
@@ -90,6 +97,7 @@ export class AccountManager {
   private data: AppData;
   private screens = new Map<AccountId, MeasuredScreen>();
   private modalOpen = false;
+  private lastAutoOptimizeAt: number | null = null;
   private nextOpenAt = 0;
   private nextEventId = 1;
   private totals: UsageSample = { memoryMb: 0, cpu: 0 };
@@ -187,6 +195,15 @@ export class AccountManager {
       case 'set-modal-open':
         this.setModalOpen(command.open);
         return;
+      case 'optimize':
+        this.optimize(command.accountId, false);
+        return;
+      case 'set-auto-optimize': {
+        const hours = command.hours;
+        if (hours !== null && parseOptimizeHours(String(hours)) !== hours) return;
+        this.commit(setAutoOptimize(this.data, command.accountId, hours, command.scope));
+        return;
+      }
       default: {
         const _exhaustive: never = command;
         throw new Error(`Unknown command ${String(_exhaustive)}`);
@@ -310,6 +327,9 @@ export class AccountManager {
       detached: null,
       pageLoaded: false,
       restarting: false,
+      freshSince: null,
+      lastUsedAt: null,
+      optimizing: null,
     };
     this.slots.set(account.id, slot);
     return slot;
@@ -333,6 +353,7 @@ export class AccountManager {
     slot.openTimer = null;
     slot.memoryMb = [];
     slot.cpu = [];
+    slot.optimizing = null;
     const view = slot.view;
     if (view !== null) {
       slot.view = null;
@@ -370,6 +391,7 @@ export class AccountManager {
     });
     view.setBackgroundColor(VIEW_BACKGROUND);
     slot.view = view;
+    slot.freshSince = Date.now();
     slot.contentsId = view.webContents.id;
     this.slotBySender.set(view.webContents.id, slot);
     view.webContents.setAudioMuted(account.muted);
@@ -403,9 +425,12 @@ export class AccountManager {
     };
     const noteInput = (): void => {
       slot.lastInputAt = Date.now();
+      slot.lastUsedAt = slot.lastInputAt;
     };
 
     contents.on('render-process-gone', () => {
+      // Either way the next load starts a new process.
+      slot.freshSince = Date.now();
       if (!slot.restarting) {
         report('crash');
         return;
@@ -531,6 +556,17 @@ export class AccountManager {
   private tick(): void {
     const now = Date.now();
     for (const slot of this.slots.values()) this.feed(slot, { type: 'tick', now });
+    const candidates = [...this.slots.values()].map((slot) => ({
+      id: slot.accountId,
+      hours: this.stored(slot.accountId)?.autoOptimizeHours ?? null,
+      freshSince: slot.freshSince,
+      lastUsedAt: slot.lastUsedAt,
+      status: slot.supervisor.status,
+    }));
+    const next = nextAutoOptimization(candidates, this.lastAutoOptimizeAt, now);
+    if (next === null) return;
+    this.lastAutoOptimizeAt = now;
+    this.optimize(next, true);
   }
 
   private feedAccount(id: AccountId, type: Exclude<SupervisorEvent['type'], 'probe' | 'left-site'>): void {
@@ -576,6 +612,27 @@ export class AccountManager {
         throw new Error(`Unknown action ${String(_exhaustive)}`);
       }
     }
+  }
+
+  // A new process for the page frees what the old one had piled up. What it freed is recorded once the new
+  // page is back, from the first measure of the new process.
+  private optimize(id: AccountId, auto: boolean): void {
+    const slot = this.slots.get(id);
+    if (slot === undefined || slot.view === null || slot.optimizing !== null) return;
+    if (!canOptimize(slot.supervisor.status)) return;
+    slot.optimizing = { auto, beforeMb: slot.memoryMb.at(-1) ?? null };
+    slot.memoryMb = [];
+    this.restartPage(slot);
+  }
+
+  private noteOptimized(slot: Slot): void {
+    const optimizing = slot.optimizing;
+    const afterMb = slot.memoryMb.at(-1);
+    if (optimizing === null || afterMb === undefined || !canOptimize(slot.supervisor.status)) return;
+    slot.optimizing = null;
+    const label = optimizing.auto ? 'Otimizada sozinha' : 'Otimizada';
+    const freed = optimizing.beforeMb === null ? null : Math.max(0, Math.round(optimizing.beforeMb - afterMb));
+    this.record(slot, freed === null ? label : `${label} · liberou ${freed} MB`);
   }
 
   // The renderer is killed first, so the page does not need to answer, and the load waits for the news that
@@ -719,6 +776,7 @@ export class AccountManager {
       if (own === null) continue;
       slot.memoryMb = appendSample(slot.memoryMb, own.memoryMb);
       slot.cpu = appendSample(slot.cpu, own.cpu);
+      this.noteOptimized(slot);
     }
     this.publish();
   }
@@ -781,14 +839,20 @@ export class AccountManager {
         partition: partitionFor(account.gameId, account.id),
         readsSession: slot.game.readsSession,
         autoOptimizeHours: account.autoOptimizeHours,
-        optimizeDueAt: null,
-        optimizeWaiting: false,
+        ...this.optimizeState(slot, account.autoOptimizeHours),
         memoryMb: slot.memoryMb,
         cpu: slot.cpu,
         history: slot.history,
       });
     }
     return views;
+  }
+
+  private optimizeState(slot: Slot, hours: number | null): { optimizeDueAt: number | null; optimizeWaiting: boolean } {
+    if (!canOptimize(slot.supervisor.status)) return { optimizeDueAt: null, optimizeWaiting: false };
+    const dueAt = optimizeDueAt(hours, slot.freshSince);
+    const now = Date.now();
+    return { optimizeDueAt: dueAt, optimizeWaiting: dueAt !== null && dueAt <= now && isInUse(slot.lastUsedAt, now) };
   }
 
   private groupView(game: Game, accounts: readonly AccountView[], dot: string): GroupView {
